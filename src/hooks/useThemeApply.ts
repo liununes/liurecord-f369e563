@@ -25,6 +25,9 @@ export function useThemeApply() {
     // Reset
     body.style.removeProperty("background-color");
     body.style.removeProperty("background-image");
+    body.style.removeProperty("background-size");
+    body.style.removeProperty("background-position");
+    body.style.removeProperty("background-attachment");
 
     if (s.background_type === "solid" && s.background_value) {
       body.style.backgroundColor = s.background_value;
