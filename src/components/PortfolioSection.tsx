@@ -1,6 +1,7 @@
 import { Play, Pause } from "lucide-react";
 import { useState, useRef } from "react";
 import { usePortfolioMedia } from "@/hooks/useSiteContent";
+import WhatsAppCTA from "./WhatsAppCTA";
 
 const PortfolioSection = () => {
   const [playingIndex, setPlayingIndex] = useState<number | null>(null);
@@ -68,6 +69,10 @@ const PortfolioSection = () => {
             * Para ouvir os áudios reais, entre em contato conosco.
           </p>
         )}
+
+        <div className="text-center mt-12">
+          <WhatsAppCTA text="Quero meu áudio profissional" />
+        </div>
       </div>
     </section>
   );
