@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { Mail, Phone, MapPin, Send } from "lucide-react";
+import { Mail, Phone, MapPin, Send, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useSiteContent } from "@/hooks/useSiteContent";
 
 const ContactSection = () => {
   const { data: contactData } = useSiteContent("contact");
+  const { data: settingsData } = useSiteContent("settings");
   const c = (contactData as any) || {};
+  const s = (settingsData as any) || {};
+
+  const whatsappNumber = s.whatsapp_number || c.whatsappNumber || "";
+  const whatsappMessage = s.whatsapp_message || "";
 
   const [formData, setFormData] = useState({
     name: "",
@@ -20,6 +25,10 @@ const ContactSection = () => {
     toast.success("Mensagem enviada com sucesso! Entraremos em contato em breve.");
     setFormData({ name: "", email: "", phone: "", service: "", message: "" });
   };
+
+  const whatsappUrl = whatsappNumber
+    ? `https://wa.me/${whatsappNumber.replace(/\D/g, "")}?text=${encodeURIComponent(whatsappMessage)}`
+    : null;
 
   return (
     <section id="contato" className="py-24 bg-secondary/30">
@@ -46,7 +55,7 @@ const ContactSection = () => {
                 <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center"><Mail className="text-primary" size={20} /></div>
                 <div>
                   <p className="font-body text-xs text-muted-foreground uppercase tracking-wider">E-mail</p>
-                  <p className="font-body text-foreground">{c.email || "contato@liurecord.com.br"}</p>
+                  <p className="font-body text-foreground">{s.contact_email || c.email || "contato@liurecord.com.br"}</p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
@@ -57,6 +66,17 @@ const ContactSection = () => {
                 </div>
               </div>
             </div>
+
+            {whatsappUrl && (
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 bg-green-600 text-white font-body font-semibold px-6 py-3 rounded-md hover:bg-green-700 transition-colors"
+              >
+                <MessageCircle size={18} /> Falar no WhatsApp
+              </a>
+            )}
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

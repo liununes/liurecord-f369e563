@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
+import { useSiteContent } from "@/hooks/useSiteContent";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const { data: settings } = useSiteContent("settings");
+  const s = (settings as any) || {};
 
   const navItems = [
     { label: "Início", href: "#inicio" },
@@ -14,11 +17,14 @@ const Header = () => {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-        <a href="#inicio" className="font-display text-3xl tracking-wider text-gradient-gold">
-          LIU RECORD
+        <a href="#inicio" className="flex items-center gap-2">
+          {s.logo_url ? (
+            <img src={s.logo_url} alt="Logo" className="h-10 object-contain" />
+          ) : (
+            <span className="font-display text-3xl tracking-wider text-gradient-gold">LIU RECORD</span>
+          )}
         </a>
 
-        {/* Desktop nav */}
         <nav className="hidden md:flex items-center gap-8">
           {navItems.map((item) => (
             <a
@@ -31,7 +37,6 @@ const Header = () => {
           ))}
         </nav>
 
-        {/* Mobile toggle */}
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="md:hidden text-foreground"
@@ -41,7 +46,6 @@ const Header = () => {
         </button>
       </div>
 
-      {/* Mobile nav */}
       {isOpen && (
         <nav className="md:hidden bg-background border-t border-border animate-fade-in">
           {navItems.map((item) => (

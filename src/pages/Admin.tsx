@@ -2,16 +2,18 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useSiteContent";
-import { LogOut, FileText, Palette, Music, Film, Settings } from "lucide-react";
+import { LogOut, FileText, Palette, Music, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AdminContentTab from "@/components/admin/AdminContentTab";
 import AdminThemeTab from "@/components/admin/AdminThemeTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
+import AdminSettingsTab from "@/components/admin/AdminSettingsTab";
 
 const tabs = [
   { id: "content", label: "Conteúdo", icon: FileText },
   { id: "theme", label: "Cores / Tema", icon: Palette },
   { id: "media", label: "Mídia", icon: Music },
+  { id: "settings", label: "Configurações", icon: Settings },
 ];
 
 const Admin = () => {
@@ -52,7 +54,7 @@ const Admin = () => {
           <Settings className="mx-auto text-muted-foreground mb-4" size={48} />
           <h1 className="font-display text-3xl text-foreground mb-2">Acesso Restrito</h1>
           <p className="font-body text-muted-foreground mb-6">
-            Sua conta não possui permissão de administrador. Peça ao admin para conceder acesso.
+            Sua conta não possui permissão de administrador.
           </p>
           <p className="font-body text-xs text-muted-foreground mb-4">{user?.email}</p>
           <div className="flex gap-3 justify-center">
@@ -66,7 +68,6 @@ const Admin = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b border-border bg-card sticky top-0 z-50">
         <div className="container mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -82,7 +83,6 @@ const Admin = () => {
         </div>
       </header>
 
-      {/* Tab bar */}
       <div className="border-b border-border bg-card/50">
         <div className="container mx-auto px-4 flex gap-1 overflow-x-auto">
           {tabs.map((tab) => (
@@ -102,11 +102,11 @@ const Admin = () => {
         </div>
       </div>
 
-      {/* Content */}
       <main className="container mx-auto px-4 py-6">
         {activeTab === "content" && <AdminContentTab />}
         {activeTab === "theme" && <AdminThemeTab />}
         {activeTab === "media" && <AdminMediaTab />}
+        {activeTab === "settings" && <AdminSettingsTab />}
       </main>
     </div>
   );
