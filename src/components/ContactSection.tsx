@@ -4,9 +4,9 @@ import { toast } from "sonner";
 import { useSiteContent } from "@/hooks/useSiteContent";
 import emailjs from "@emailjs/browser";
 
-const EMAILJS_SERVICE_ID = "service_liurecord";
-const EMAILJS_TEMPLATE_ID = "template_liurecord";
-const EMAILJS_PUBLIC_KEY = "YOUR_PUBLIC_KEY";
+const EMAILJS_SERVICE_ID = "service_j0n8y7e";
+const EMAILJS_TEMPLATE_ID = "template_3apdi6x";
+const EMAILJS_PUBLIC_KEY = "TPMJd6SVQNK5e2iSL";
 
 const ContactSection = () => {
   const { data: contactData } = useSiteContent("contact");
