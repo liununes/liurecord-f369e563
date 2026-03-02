@@ -3,17 +3,17 @@ import aerialImg from "@/assets/aerial.jpg";
 import filmingImg from "@/assets/filming.jpg";
 import socialImg from "@/assets/social-media.jpg";
 import { useSiteContent } from "@/hooks/useSiteContent";
+import WhatsAppCTA from "./WhatsAppCTA";
 
 const iconMap: Record<string, any> = { Radio, Volume2, Camera, Film, Share2 };
-const imageMap: Record<string, string> = {
+const fallbackImageMap: Record<string, string> = {
   "captacao-aerea": aerialImg,
   filmagens: filmingImg,
   "social-media": socialImg,
 };
 
 const defaultServices = [
-  { id: "spot-radio", iconName: "Radio", title: "Spot de Rádio", description: "Criação de spots publicitários profissionais para rádio." },
-  { id: "carro-de-som", iconName: "Volume2", title: "Carro de Som", description: "Gravações impactantes para carros de som." },
+  { id: "audios", iconName: "Volume2", title: "Áudios", description: "Produção de áudios profissionais para rádio, carro de som, TV, redes sociais e campanhas publicitárias." },
   { id: "captacao-aerea", iconName: "Camera", title: "Captação Aérea", description: "Imagens aéreas com drones profissionais." },
   { id: "filmagens", iconName: "Film", title: "Filmagens", description: "Produção de vídeos profissionais." },
   { id: "social-media", iconName: "Share2", title: "Social Media", description: "Gestão completa de redes sociais." },
@@ -34,7 +34,7 @@ const ServicesSection = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((service: any) => {
             const Icon = iconMap[service.iconName] || Radio;
-            const img = imageMap[service.id];
+            const img = service.image_url || fallbackImageMap[service.id];
             return (
               <div key={service.id} className="group relative bg-card border border-border rounded-lg overflow-hidden hover:border-primary/40 transition-all duration-500 hover:shadow-gold">
                 {img && (
@@ -50,6 +50,10 @@ const ServicesSection = () => {
               </div>
             );
           })}
+        </div>
+
+        <div className="text-center mt-12">
+          <WhatsAppCTA text="Solicitar orçamento no WhatsApp" />
         </div>
       </div>
     </section>
