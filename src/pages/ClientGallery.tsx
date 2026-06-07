@@ -20,6 +20,14 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
+interface DownloadLog {
+  id: string;
+  photoId: string;
+  filename: string;
+  timestamp: string;
+  ip: string;
+}
+
 interface ClientPhoto {
   id: string;
   original_url: string;
@@ -36,6 +44,7 @@ interface Client {
   watermarkText?: string;
   photos: ClientPhoto[];
   created_at: string;
+  downloadLogs?: DownloadLog[];
 }
 
 const ClientGallery = () => {
@@ -111,10 +120,57 @@ const ClientGallery = () => {
     window.open(whatsappUrl, "_blank");
   };
 
+  const fetchIp = async (): Promise<string> => {
+    try {
+      const res = await fetch("https://api.ipify.org?format=json");
+      const data = await res.json();
+      return data.ip || "IP Indisponível";
+    } catch {
+      return "IP Indisponível";
+    }
+  };
+
   const triggerDownload = async (photo: ClientPhoto) => {
+    if (!client) return;
+
+    const confirmDownload = window.confirm(
+      `Deseja baixar a foto original "${photo.filename || "foto.jpg"}" em alta resolução?`
+    );
+    if (!confirmDownload) return;
+
+    setSaving(true);
+    const ip = await fetchIp();
+    const timestamp = new Date().toLocaleString("pt-BR");
+
+    const logEntry: DownloadLog = {
+      id: crypto.randomUUID(),
+      photoId: photo.id,
+      filename: photo.filename,
+      timestamp,
+      ip
+    };
+
+    const currentLogs = client.downloadLogs || [];
+    const updatedClient = {
+      ...client,
+      downloadLogs: [logEntry, ...currentLogs]
+    };
+
+    setClient(updatedClient);
+
+    try {
+      const updatedClients = clients.map((c) =>
+        c.id === client.id ? updatedClient : c
+      );
+      await updateClientsMutation.mutateAsync(updatedClients);
+    } catch (err) {
+      console.error("Erro ao registrar log de download:", err);
+    } finally {
+      setSaving(false);
+    }
+
     try {
       // Direct file download trick by opening original url
-      // Or we can create an anchor tag
       const link = document.createElement("a");
       link.href = photo.original_url;
       link.target = "_blank";
@@ -122,7 +178,7 @@ const ClientGallery = () => {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      toast.success("Iniciando download da foto original.");
+      toast.success("Download iniciado.");
     } catch {
       window.open(photo.original_url, "_blank");
     }

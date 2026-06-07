@@ -31,6 +31,14 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 
+interface DownloadLog {
+  id: string;
+  photoId: string;
+  filename: string;
+  timestamp: string;
+  ip: string;
+}
+
 interface ClientPhoto {
   id: string;
   original_url: string;
@@ -47,6 +55,7 @@ interface Client {
   watermarkText?: string;
   photos: ClientPhoto[];
   created_at: string;
+  downloadLogs?: DownloadLog[];
 }
 
 const AdminClientsTab = () => {
@@ -67,6 +76,10 @@ const AdminClientsTab = () => {
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  const [editName, setEditName] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editWatermark, setEditWatermark] = useState("");
 
   const togglePasswordVisibility = (id: string) => {
     setShowPassword((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -194,18 +207,35 @@ const AdminClientsTab = () => {
     }
   };
 
-  const handleUpdateClientSettings = async (field: keyof Client, val: string) => {
+  const handleSelectClient = (client: Client) => {
+    setSelectedClient(client);
+    setEditName(client.name);
+    setEditPassword(client.password);
+    setEditWatermark(client.watermarkText || "LIU RECORD");
+    setView("edit");
+  };
+
+  const handleSaveSettings = async () => {
     if (!selectedClient) return;
+    if (!editName.trim() || !editPassword.trim()) {
+      toast.error("Por favor, preencha o nome e a senha.");
+      return;
+    }
     try {
-      const updatedClient = { ...selectedClient, [field]: val };
+      const updatedClient = {
+        ...selectedClient,
+        name: editName.trim(),
+        password: editPassword.trim(),
+        watermarkText: editWatermark.trim() || "LIU RECORD"
+      };
       const updatedClients = clients.map((c) =>
         c.id === selectedClient.id ? updatedClient : c
       );
       await updateClientsMutation.mutateAsync(updatedClients);
       setSelectedClient(updatedClient);
-      toast.success("Configuração atualizada!");
+      toast.success("Configurações do cliente salvas!");
     } catch (err: any) {
-      toast.error("Erro ao atualizar: " + err.message);
+      toast.error("Erro ao salvar: " + err.message);
     }
   };
 
@@ -458,10 +488,7 @@ const AdminClientsTab = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => {
-                            setSelectedClient(client);
-                            setView("edit");
-                          }}
+                          onClick={() => handleSelectClient(client)}
                           className="font-body text-xs border-border bg-secondary hover:bg-secondary/80 flex items-center gap-1.5"
                         >
                           Gerenciar Galeria
@@ -513,58 +540,45 @@ const AdminClientsTab = () => {
             </div>
 
             {/* Quick configuration forms */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="bg-card border-border">
-                <CardHeader className="py-4">
-                  <CardTitle className="font-display text-sm">Alterar Nome</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 pb-4">
-                  <Input
-                    defaultValue={selectedClient.name}
-                    onBlur={(e) => {
-                      if (e.target.value && e.target.value !== selectedClient.name) {
-                        handleUpdateClientSettings("name", e.target.value);
-                      }
-                    }}
-                    placeholder="Nome do Cliente"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border">
-                <CardHeader className="py-4">
-                  <CardTitle className="font-display text-sm">Alterar Senha</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 pb-4">
-                  <Input
-                    defaultValue={selectedClient.password}
-                    onBlur={(e) => {
-                      if (e.target.value && e.target.value !== selectedClient.password) {
-                        handleUpdateClientSettings("password", e.target.value);
-                      }
-                    }}
-                    placeholder="Senha de Acesso"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border">
-                <CardHeader className="py-4">
-                  <CardTitle className="font-display text-sm">Marca D'água da Miniatura</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2 pb-4">
-                  <Input
-                    defaultValue={selectedClient.watermarkText || "LIU RECORD"}
-                    onBlur={(e) => {
-                      if (e.target.value && e.target.value !== (selectedClient.watermarkText || "LIU RECORD")) {
-                        handleUpdateClientSettings("watermarkText", e.target.value);
-                      }
-                    }}
-                    placeholder="Texto Marca D'água"
-                  />
-                </CardContent>
-              </Card>
-            </div>
+            <Card className="bg-card border-border">
+              <CardHeader className="py-4">
+                <CardTitle className="font-display text-base text-foreground">Configurações da Galeria</CardTitle>
+                <CardDescription className="font-body text-xs text-muted-foreground">Atualize o nome, a senha ou a marca d'água deste cliente e clique em Salvar Alterações.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 pb-5">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-body font-medium text-foreground">Nome do Cliente</label>
+                    <Input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Nome do Cliente"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-body font-medium text-foreground">Senha de Acesso</label>
+                    <Input
+                      value={editPassword}
+                      onChange={(e) => setEditPassword(e.target.value)}
+                      placeholder="Senha de Acesso"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-body font-medium text-foreground">Marca D'água da Miniatura</label>
+                    <Input
+                      value={editWatermark}
+                      onChange={(e) => setEditWatermark(e.target.value)}
+                      placeholder="Texto Marca D'água"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <Button onClick={handleSaveSettings} className="bg-gradient-gold text-primary-foreground font-body font-semibold">
+                    Salvar Alterações
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
             {/* Photo Upload Area */}
             <Card className="bg-card/50 border-dashed border-2 border-border p-6 rounded-lg text-center hover:border-primary/40 transition-colors">
@@ -711,6 +725,36 @@ const AdminClientsTab = () => {
                 </div>
               )}
             </div>
+
+            {/* Download Logs Section */}
+            {selectedClient.downloadLogs && selectedClient.downloadLogs.length > 0 && (
+              <Card className="bg-card border-border mt-8">
+                <CardHeader>
+                  <CardTitle className="font-display text-base text-foreground flex items-center gap-2">
+                    <Calendar size={18} className="text-primary" /> Histórico de Downloads
+                  </CardTitle>
+                  <CardDescription className="font-body text-xs text-muted-foreground">
+                    Registro de downloads efetuados pelo cliente com data, hora e endereço de IP.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="border border-border rounded-md divide-y divide-border/50 max-h-60 overflow-y-auto font-body text-xs">
+                    {selectedClient.downloadLogs.map((log: any) => (
+                      <div key={log.id} className="p-3 flex items-center justify-between hover:bg-secondary/20 transition-colors">
+                        <div>
+                          <p className="font-semibold text-foreground">{log.filename}</p>
+                          <p className="text-[10px] text-muted-foreground">ID da Foto: {log.photoId}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-foreground">{log.timestamp}</p>
+                          <p className="text-[10px] text-primary font-mono">{log.ip}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )
       )}
