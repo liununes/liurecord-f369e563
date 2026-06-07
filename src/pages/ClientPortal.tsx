@@ -1,0 +1,121 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useClients } from "@/hooks/useSiteContent";
+import { toast } from "sonner";
+import { Lock, ArrowLeft, Camera, Loader2, Key, User } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+
+const ClientPortal = () => {
+  const navigate = useNavigate();
+  const { data: clients = [], isLoading } = useClients();
+  const [clientName, setClientName] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleAccess = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientName || !password) {
+      toast.error("Preencha todos os campos.");
+      return;
+    }
+
+    setLoading(true);
+
+    // Look for a client whose name matches (case-insensitive) and password matches
+    const found = clients.find(
+      (c) =>
+        c.name.toLowerCase().trim().includes(clientName.toLowerCase().trim()) &&
+        c.password.trim() === password.trim()
+    );
+
+    if (found) {
+      // Set session authorization
+      sessionStorage.setItem(`auth_client_${found.id}`, "true");
+      toast.success(`Bem-vindo, ${found.name}!`);
+      setTimeout(() => {
+        navigate(`/galeria/${found.id}`);
+      }, 800);
+    } else {
+      toast.error("Nome do cliente ou senha incorretos.");
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0c0a09] text-foreground flex flex-col">
+      <Header />
+
+      <main className="flex-1 flex items-center justify-center px-4 py-24 relative overflow-hidden">
+        {/* Decorative Glow */}
+        <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-1/3 right-1/3 w-80 h-80 bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
+
+        <Card className="w-full max-w-md bg-card/60 border-border backdrop-blur-md shadow-2xl relative z-10">
+          <CardHeader className="text-center">
+            <div className="mx-auto w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-2">
+              <Camera size={22} />
+            </div>
+            <CardTitle className="font-display text-xl text-foreground">Portal do Cliente</CardTitle>
+            <CardDescription className="font-body text-xs text-muted-foreground mt-1">
+              Acesse sua galeria exclusiva para visualizar, selecionar e baixar suas fotos.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAccess} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-xs font-body font-medium text-foreground flex items-center gap-1.5">
+                  <User size={13} className="text-primary" /> Nome do Cliente
+                </label>
+                <Input
+                  placeholder="Ex: João e Maria"
+                  className="bg-card/50 border-border font-body"
+                  value={clientName}
+                  onChange={(e) => setClientName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-body font-medium text-foreground flex items-center gap-1.5">
+                  <Key size={13} className="text-primary" /> Senha de Acesso
+                </label>
+                <Input
+                  type="password"
+                  placeholder="Digite sua senha"
+                  className="bg-card/50 border-border font-body"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-gold text-primary-foreground font-body font-semibold py-5 mt-2 flex items-center justify-center gap-2"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="animate-spin" size={16} /> Acessando...
+                  </>
+                ) : (
+                  <>
+                    <Lock size={16} /> Entrar na Galeria
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </main>
+
+      <Footer />
+    </div>
+  );
+};
+
+export default ClientPortal;

@@ -1,23 +1,28 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useSiteContent } from "@/hooks/useSiteContent";
+import { useLocation } from "react-router-dom";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { data: settings } = useSiteContent("settings");
   const s = (settings as any) || {};
+  const location = useLocation();
+
+  const isHome = location.pathname === "/";
 
   const navItems = [
-    { label: "Início", href: "#inicio" },
-    { label: "Serviços", href: "#servicos" },
-    { label: "Portfólio", href: "#portfolio" },
-    { label: "Contato", href: "#contato" },
+    { label: "Início", href: isHome ? "#inicio" : "/#inicio" },
+    { label: "Serviços", href: isHome ? "#servicos" : "/#servicos" },
+    { label: "Portfólio", href: isHome ? "#portfolio" : "/#portfolio" },
+    { label: "Contato", href: isHome ? "#contato" : "/#contato" },
+    { label: "Clientes", href: "/clientes" },
   ];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-        <a href="#inicio" className="flex items-center gap-2">
+        <a href={isHome ? "#inicio" : "/"} className="flex items-center gap-2">
           {s.logo_url ? (
             <img src={s.logo_url} alt="Logo" className="h-10 object-contain" />
           ) : (
