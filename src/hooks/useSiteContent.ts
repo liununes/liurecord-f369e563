@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { encryptData, decryptData } from "@/lib/crypto";
 
 // ─── Site Content ────────────────────────────────────────────────────────────
 
@@ -146,6 +147,67 @@ export function useAdminCheck() {
         .eq("role", "admin")
         .maybeSingle();
       return !!data;
+    },
+  });
+}
+
+// ─── Client Proofing ─────────────────────────────────────────────────────────
+
+export function useClients() {
+  return useQuery({
+    queryKey: ["clients_data"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_content")
+        .select("content")
+        .eq("section_key", "clients")
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data || !data.content) return [];
+
+      const content = data.content as any;
+      if (content && content.encrypted) {
+        try {
+          const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
+          return Array.isArray(decrypted) ? decrypted : [];
+        } catch (e) {
+          console.error("Failed to decrypt clients data", e);
+          return [];
+        }
+      }
+      return Array.isArray(content) ? content : [];
+    },
+  });
+}
+
+export function useUpdateClients() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (clients: any[]) => {
+      const encrypted = await encryptData(clients, "liu_record_proofing_vault");
+      
+      const { data } = await supabase
+        .from("site_content")
+        .select("id")
+        .eq("section_key", "clients")
+        .maybeSingle();
+
+      if (data?.id) {
+        const { error } = await supabase
+          .from("site_content")
+          .update({ content: { encrypted } })
+          .eq("section_key", "clients");
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("site_content")
+          .insert({ section_key: "clients", content: { encrypted } });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["clients_data"] });
     },
   });
 }

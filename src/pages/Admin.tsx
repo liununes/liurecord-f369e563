@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useSiteContent";
-import { LogOut, FileText, Palette, Music, Settings } from "lucide-react";
+import { LogOut, FileText, Palette, Music, Settings, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AdminContentTab from "@/components/admin/AdminContentTab";
 import AdminThemeTab from "@/components/admin/AdminThemeTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
 import AdminSettingsTab from "@/components/admin/AdminSettingsTab";
+import AdminClientsTab from "@/components/admin/AdminClientsTab";
 
 const tabs = [
   { id: "content", label: "Conteúdo", icon: FileText },
   { id: "theme", label: "Cores / Tema", icon: Palette },
   { id: "media", label: "Mídia", icon: Music },
+  { id: "clients", label: "Clientes", icon: Users },
   { id: "settings", label: "Configurações", icon: Settings },
 ];
 
@@ -106,6 +108,7 @@ const Admin = () => {
         {activeTab === "content" && <AdminContentTab />}
         {activeTab === "theme" && <AdminThemeTab />}
         {activeTab === "media" && <AdminMediaTab />}
+        {activeTab === "clients" && <AdminClientsTab />}
         {activeTab === "settings" && <AdminSettingsTab />}
       </main>
     </div>
