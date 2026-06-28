@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAdminCheck } from "@/hooks/useSiteContent";
 import { LogOut, FileText, Palette, Music, Settings, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import AdminContentTab from "@/components/admin/AdminContentTab";
 import AdminThemeTab from "@/components/admin/AdminThemeTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
@@ -34,6 +35,40 @@ const Admin = () => {
       else setUser(session.user);
     });
     return () => subscription.unsubscribe();
+  }, [navigate]);
+
+  useEffect(() => {
+    // Auto logout after 15 minutes of inactivity (900,000 ms)
+    const INACTIVITY_TIMEOUT = 15 * 60 * 1000;
+    let timeoutId: NodeJS.Timeout;
+
+    const performAutoLogout = async () => {
+      await supabase.auth.signOut();
+      toast.warning("Sua sessão expirou por inatividade.");
+      navigate("/admin/login");
+    };
+
+    const resetTimer = () => {
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(performAutoLogout, INACTIVITY_TIMEOUT);
+    };
+
+    const events = ["mousedown", "mousemove", "keypress", "scroll", "touchstart"];
+
+    // Initialize timer
+    resetTimer();
+
+    // Attach listeners
+    events.forEach((event) => {
+      window.addEventListener(event, resetTimer);
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      events.forEach((event) => {
+        window.removeEventListener(event, resetTimer);
+      });
+    };
   }, [navigate]);
 
   const handleLogout = async () => {
