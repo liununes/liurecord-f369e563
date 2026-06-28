@@ -456,6 +456,7 @@ const AdminClientsTab = () => {
               filteredClients.map((client) => {
                 const photosCount = client.photos?.length || 0;
                 const likedCount = client.photos?.filter((p) => p.status === "liked").length || 0;
+                const unreleasedLikedCount = client.photos?.filter((p) => p.status === "liked" && !p.released).length || 0;
                 const dislikedCount = client.photos?.filter((p) => p.status === "disliked").length || 0;
                 const releasedCount = client.photos?.filter((p) => p.released).length || 0;
 
@@ -487,7 +488,7 @@ const AdminClientsTab = () => {
                         <div className="flex items-center gap-2 pt-1">
                           <span className="text-xs font-body text-muted-foreground mr-1">Seleção:</span>
                           <Badge variant="secondary" className="bg-rose-950/20 hover:bg-rose-950/20 text-rose-500 border-rose-900/30 text-[10px] flex items-center gap-1 py-0 px-2">
-                            <Heart size={10} className="fill-rose-500 text-rose-500" /> {likedCount}
+                            <Heart size={10} className="fill-rose-500 text-rose-500" /> {client.maxPhotos ? unreleasedLikedCount : likedCount}
                             {client.maxPhotos ? ` / ${client.maxPhotos}` : ""}
                           </Badge>
                           <Badge variant="secondary" className="bg-red-950/20 hover:bg-red-950/20 text-red-400 border-red-900/30 text-[10px] flex items-center gap-1 py-0 px-2">

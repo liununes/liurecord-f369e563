@@ -93,11 +93,14 @@ const ClientGallery = () => {
     if (!client) return;
 
     if (action === "liked" && client.maxPhotos) {
-      const likedPhotosCount = client.photos.filter((p) => p.status === "liked").length;
-      const currentlyLiked = client.photos.find((p) => p.id === photoId)?.status === "liked";
-      if (!currentlyLiked && likedPhotosCount >= client.maxPhotos) {
-        toast.error(`Você atingiu o limite de ${client.maxPhotos} fotos escolhidas.`);
-        return;
+      const photoToLike = client.photos.find((p) => p.id === photoId);
+      if (photoToLike && !photoToLike.released) {
+        const unreleasedLikedCount = client.photos.filter((p) => p.status === "liked" && !p.released).length;
+        const currentlyLiked = photoToLike.status === "liked";
+        if (!currentlyLiked && unreleasedLikedCount >= client.maxPhotos) {
+          toast.error(`Você atingiu o limite de ${client.maxPhotos} fotos escolhidas.`);
+          return;
+        }
       }
     }
 
@@ -284,6 +287,7 @@ const ClientGallery = () => {
   // GALLERY VIEW (AUTHENTICATED)
   const photosCount = client.photos?.length || 0;
   const likedPhotos = client.photos?.filter((p) => p.status === "liked") || [];
+  const unreleasedLikedPhotos = client.photos?.filter((p) => p.status === "liked" && !p.released) || [];
   const dislikedPhotos = client.photos?.filter((p) => p.status === "disliked") || [];
   const releasedPhotos = client.photos?.filter((p) => p.released) || [];
 
@@ -352,7 +356,7 @@ const ClientGallery = () => {
               <div className="bg-rose-950/20 border border-rose-900/30 rounded-lg px-4 py-3 text-center min-w-[90px] flex-1 lg:flex-none">
                 <span className="block text-[10px] text-rose-400 uppercase font-semibold">Escolhidas</span>
                 <span className="text-xl font-display font-bold text-rose-500">
-                  {likedPhotos.length}
+                  {client.maxPhotos ? unreleasedLikedPhotos.length : likedPhotos.length}
                   {client.maxPhotos ? ` / ${client.maxPhotos}` : ""}
                 </span>
               </div>
