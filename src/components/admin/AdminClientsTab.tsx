@@ -53,6 +53,7 @@ interface Client {
   name: string;
   password: string;
   watermarkText?: string;
+  maxPhotos?: number;
   photos: ClientPhoto[];
   created_at: string;
   downloadLogs?: DownloadLog[];
@@ -71,6 +72,7 @@ const AdminClientsTab = () => {
   const [newClientName, setNewClientName] = useState("");
   const [newClientPassword, setNewClientPassword] = useState("");
   const [newClientWatermark, setNewClientWatermark] = useState("LIU RECORD");
+  const [newClientMaxPhotos, setNewClientMaxPhotos] = useState("");
 
   // Edit states
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
@@ -80,6 +82,7 @@ const AdminClientsTab = () => {
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editWatermark, setEditWatermark] = useState("");
+  const [editMaxPhotos, setEditMaxPhotos] = useState("");
 
   const togglePasswordVisibility = (id: string) => {
     setShowPassword((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -92,11 +95,14 @@ const AdminClientsTab = () => {
       return;
     }
 
+    const maxPhotosVal = newClientMaxPhotos ? parseInt(newClientMaxPhotos, 10) : undefined;
+
     const newClient: Client = {
       id: crypto.randomUUID(),
       name: newClientName,
       password: newClientPassword,
       watermarkText: newClientWatermark || "LIU RECORD",
+      maxPhotos: maxPhotosVal && maxPhotosVal > 0 ? maxPhotosVal : undefined,
       photos: [],
       created_at: new Date().toISOString()
     };
@@ -108,6 +114,7 @@ const AdminClientsTab = () => {
       setNewClientName("");
       setNewClientPassword("");
       setNewClientWatermark("LIU RECORD");
+      setNewClientMaxPhotos("");
       setShowCreateForm(false);
     } catch (err: any) {
       toast.error("Erro ao criar cliente: " + err.message);
@@ -212,6 +219,7 @@ const AdminClientsTab = () => {
     setEditName(client.name);
     setEditPassword(client.password);
     setEditWatermark(client.watermarkText || "LIU RECORD");
+    setEditMaxPhotos(client.maxPhotos?.toString() || "");
     setView("edit");
   };
 
@@ -221,12 +229,14 @@ const AdminClientsTab = () => {
       toast.error("Por favor, preencha o nome e a senha.");
       return;
     }
+    const maxPhotosVal = editMaxPhotos ? parseInt(editMaxPhotos, 10) : undefined;
     try {
       const updatedClient = {
         ...selectedClient,
         name: editName.trim(),
         password: editPassword.trim(),
-        watermarkText: editWatermark.trim() || "LIU RECORD"
+        watermarkText: editWatermark.trim() || "LIU RECORD",
+        maxPhotos: maxPhotosVal && maxPhotosVal > 0 ? maxPhotosVal : undefined
       };
       const updatedClients = clients.map((c) =>
         c.id === selectedClient.id ? updatedClient : c
@@ -412,6 +422,19 @@ const AdminClientsTab = () => {
                       onChange={(e) => setNewClientWatermark(e.target.value)}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-body font-medium text-foreground flex items-center justify-between">
+                      <span>Limite de Fotos Escolhidas</span>
+                      <span className="text-[10px] text-muted-foreground font-normal">Deixe em branco ou 0 para ilimitado</span>
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="Ex: 20"
+                      value={newClientMaxPhotos}
+                      onChange={(e) => setNewClientMaxPhotos(e.target.value)}
+                    />
+                  </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)} className="text-muted-foreground">
                       Cancelar
@@ -465,6 +488,7 @@ const AdminClientsTab = () => {
                           <span className="text-xs font-body text-muted-foreground mr-1">Seleção:</span>
                           <Badge variant="secondary" className="bg-rose-950/20 hover:bg-rose-950/20 text-rose-500 border-rose-900/30 text-[10px] flex items-center gap-1 py-0 px-2">
                             <Heart size={10} className="fill-rose-500 text-rose-500" /> {likedCount}
+                            {client.maxPhotos ? ` / ${client.maxPhotos}` : ""}
                           </Badge>
                           <Badge variant="secondary" className="bg-red-950/20 hover:bg-red-950/20 text-red-400 border-red-900/30 text-[10px] flex items-center gap-1 py-0 px-2">
                             <XIcon size={10} /> {dislikedCount}
@@ -543,10 +567,10 @@ const AdminClientsTab = () => {
             <Card className="bg-card border-border">
               <CardHeader className="py-4">
                 <CardTitle className="font-display text-base text-foreground">Configurações da Galeria</CardTitle>
-                <CardDescription className="font-body text-xs text-muted-foreground">Atualize o nome, a senha ou a marca d'água deste cliente e clique em Salvar Alterações.</CardDescription>
+                <CardDescription className="font-body text-xs text-muted-foreground">Atualize o nome, a senha, a marca d'água ou o limite de fotos deste cliente e clique em Salvar Alterações.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 pb-5">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-body font-medium text-foreground">Nome do Cliente</label>
                     <Input
@@ -569,6 +593,16 @@ const AdminClientsTab = () => {
                       value={editWatermark}
                       onChange={(e) => setEditWatermark(e.target.value)}
                       placeholder="Texto Marca D'água"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-body font-medium text-foreground">Limite de Fotos</label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={editMaxPhotos}
+                      onChange={(e) => setEditMaxPhotos(e.target.value)}
+                      placeholder="Sem limite"
                     />
                   </div>
                 </div>

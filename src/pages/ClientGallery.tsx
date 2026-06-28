@@ -42,6 +42,7 @@ interface Client {
   name: string;
   password: string;
   watermarkText?: string;
+  maxPhotos?: number;
   photos: ClientPhoto[];
   created_at: string;
   downloadLogs?: DownloadLog[];
@@ -90,6 +91,15 @@ const ClientGallery = () => {
 
   const handlePhotoAction = async (photoId: string, action: "liked" | "disliked" | "pending") => {
     if (!client) return;
+
+    if (action === "liked" && client.maxPhotos) {
+      const likedPhotosCount = client.photos.filter((p) => p.status === "liked").length;
+      const currentlyLiked = client.photos.find((p) => p.id === photoId)?.status === "liked";
+      if (!currentlyLiked && likedPhotosCount >= client.maxPhotos) {
+        toast.error(`Você atingiu o limite de ${client.maxPhotos} fotos escolhidas.`);
+        return;
+      }
+    }
 
     // optimistic update
     const updatedPhotos = client.photos.map((p) =>
@@ -323,6 +333,11 @@ const ClientGallery = () => {
               <p className="text-xs text-muted-foreground leading-relaxed">
                 Navegue pelas miniaturas abaixo. Use o botão de <strong>Coração (❤️)</strong> nas fotos que você mais gostou e deseja que sejam editadas/entregues. Use o <strong>X (❌)</strong> para dispensar. Clique em qualquer foto para ampliá-la em tela cheia.
               </p>
+              {client.maxPhotos && (
+                <p className="text-xs text-amber-500 font-medium font-body">
+                  Atenção: Você pode escolher no máximo <strong>{client.maxPhotos}</strong> foto{client.maxPhotos !== 1 && "s"}.
+                </p>
+              )}
               <p className="text-[11px] text-primary bg-primary/5 px-2.5 py-1.5 rounded-md border border-primary/10 max-w-fit mt-2">
                 As fotos possuem marca d'água provisória. Quando o fotógrafo liberar, o botão de download ficará disponível para baixar o original de alta resolução sem marca d'água.
               </p>
@@ -336,7 +351,10 @@ const ClientGallery = () => {
               </div>
               <div className="bg-rose-950/20 border border-rose-900/30 rounded-lg px-4 py-3 text-center min-w-[90px] flex-1 lg:flex-none">
                 <span className="block text-[10px] text-rose-400 uppercase font-semibold">Escolhidas</span>
-                <span className="text-xl font-display font-bold text-rose-500">{likedPhotos.length}</span>
+                <span className="text-xl font-display font-bold text-rose-500">
+                  {likedPhotos.length}
+                  {client.maxPhotos ? ` / ${client.maxPhotos}` : ""}
+                </span>
               </div>
               <div className="bg-red-950/15 border border-red-900/20 rounded-lg px-4 py-3 text-center min-w-[90px] flex-1 lg:flex-none">
                 <span className="block text-[10px] text-red-400 uppercase font-semibold">Recusadas</span>
