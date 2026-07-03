@@ -158,7 +158,7 @@ export function useClients() {
     queryKey: ["clients_data"],
     queryFn: async () => {
       console.log("[useClients] Fetching clients from Supabase...");
-
+      
       const { data, error } = await supabase
         .from("site_content")
         .select("content")
@@ -169,7 +169,7 @@ export function useClients() {
         console.error("[useClients] Supabase error:", error);
         throw error;
       }
-
+      
       if (!data || !data.content) {
         console.log("[useClients] No data found");
         return [];
@@ -187,7 +187,7 @@ export function useClients() {
           return [];
         }
       }
-
+      
       console.log("[useClients] Returning unencrypted content:", content);
       return Array.isArray(content) ? content : [];
     },
@@ -201,10 +201,10 @@ export function useUpdateClients() {
   return useMutation({
     mutationFn: async (clients: any[]) => {
       console.log("[useUpdateClients] Starting mutation with data:", clients);
-
+      
       const encrypted = await encryptData(clients, "liu_record_proofing_vault");
       console.log("[useUpdateClients] Data encrypted successfully");
-
+      
       const { data } = await supabase
         .from("site_content")
         .select("id")
