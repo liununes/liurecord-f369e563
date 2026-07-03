@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
@@ -62,11 +62,28 @@ const ClientGallery = () => {
   // Lightbox / Zoom state
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
 
+  // Recalculate and restore selected photos from the current client state
+  const recalculateSelectedPhotos = useCallback(() => {
+    if (!client) return;
+    const selectedPhotos = client.photos.filter(p => p.status === "liked");
+    const totalLiked = selectedPhotos.length;
+    
+    // If there's a maxPhotos limit, display appropriate message
+    if (client.maxPhotos && totalLiked >= client.maxPhotos) {
+      console.log(`✓ Você já selecionou o máximo de ${client.maxPhotos} fotos.`);
+    } else if (totalLiked > 0) {
+      console.log(`✓ Você já selecionou ${totalLiked} foto${totalLiked !== 1 ? 's' : ''} como escolhidas.`);
+    }
+    return totalLiked;
+  }, [client]);
+
   useEffect(() => {
     if (clients.length > 0 && clientId) {
       const found = clients.find((c) => c.id === clientId);
       if (found) {
         setClient(found);
+        // Recalculate selected photos when client is loaded
+        recalculateSelectedPhotos();
         // Check if already logged in (temp storage for current session)
         const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
         if (sessionAuth === "true") {
@@ -74,7 +91,7 @@ const ClientGallery = () => {
         }
       }
     }
-  }, [clients, clientId]);
+  }, [clients, clientId, recalculateSelectedPhotos]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +138,9 @@ const ClientGallery = () => {
         c.id === client.id ? updatedClient : c
       );
       await updateClientsMutation.mutateAsync(updatedClients);
+      
+      // Recalculate selected photos after successful action
+      recalculateSelectedPhotos();
     } catch (err) {
       // Revert optimistic update on failure
       setClient(previousClient);
@@ -128,6 +148,7 @@ const ClientGallery = () => {
     } finally {
       setSaving(false);
     }
+  };
   };
 
   const notifySelection = () => {
