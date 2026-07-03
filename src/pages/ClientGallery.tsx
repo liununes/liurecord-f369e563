@@ -13,7 +13,8 @@ import {
   Maximize2,
   Check,
   Send,
-  Loader2
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,14 +52,14 @@ interface Client {
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const { data: clients = [], isLoading, refetch: refetchClients } = useClients();
+  const { data: clients = [], isLoading } = useClients();
   const updateClientsMutation = useUpdateClients();
 
   const [client, setClient] = useState<Client | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [saving, setSaving] = useState(false);
-  const [lastSavedClient, setLastSavedClient] = useState<Client | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Lightbox / Zoom state
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
@@ -68,7 +69,6 @@ const ClientGallery = () => {
       const found = clients.find((c) => c.id === clientId);
       if (found) {
         setClient(found);
-        setLastSavedClient(found);
         // Check if already logged in (temp storage for current session)
         const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
         if (sessionAuth === "true") {
@@ -90,44 +90,6 @@ const ClientGallery = () => {
       toast.error("Senha incorreta. Tente novamente.");
     }
   };
-
-  // Função de salvamento com retry automático
-  const savePhotoSelection = useCallback(
-    async (updatedClient: Client, retryCount = 0) => {
-      const maxRetries = 3;
-      
-      try {
-        const updatedClients = clients.map((c) =>
-          c.id === updatedClient.id ? updatedClient : c
-        );
-        
-        await updateClientsMutation.mutateAsync(updatedClients);
-        
-        // Se salvou com sucesso, atualiza o cliente
-        setClient(updatedClient);
-        setLastSavedClient(updatedClient);
-        
-        return true;
-      } catch (err) {
-        console.error(`Erro ao salvar (tentativa ${retryCount + 1}/${maxRetries}):`, err);
-        
-        // Retry automático para conexões móveis instáveis
-        if (retryCount < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Wait 1s, 2s, 3s
-          return savePhotoSelection(updatedClient, retryCount + 1);
-        }
-        
-        // Se falhou após retries, reverte para o último estado salvo
-        if (lastSavedClient) {
-          setClient(lastSavedClient);
-        }
-        
-        toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
-        return false;
-      }
-    },
-    [clients, updateClientsMutation, lastSavedClient]
-  );
 
   const handlePhotoAction = async (photoId: string, action: "liked" | "disliked" | "pending") => {
     if (!client) return;
@@ -154,11 +116,29 @@ const ClientGallery = () => {
 
     // Iniciar salvamento
     setSaving(true);
+    setSaveError(null);
+    
     try {
-      const success = await savePhotoSelection(updatedClient);
-      if (success) {
-        toast.success("✓ Escolha salva com sucesso!");
-      }
+      console.log("[ClientGallery] Saving photo action:", { photoId, action, clientId: client.id });
+      
+      const updatedClients = clients.map((c) =>
+        c.id === client.id ? updatedClient : c
+      );
+      
+      console.log("[ClientGallery] Updated clients array:", updatedClients);
+      
+      // Chamada de salvamento
+      await updateClientsMutation.mutateAsync(updatedClients);
+      
+      console.log("[ClientGallery] Save successful!");
+      toast.success("✓ Escolha salva com sucesso!");
+    } catch (err: any) {
+      console.error("[ClientGallery] Save failed:", err);
+      setSaveError(err.message || "Erro desconhecido");
+      
+      // Revert to previous state
+      setClient(client);
+      toast.error("❌ Erro ao salvar: " + (err.message || "Tente novamente"));
     } finally {
       setSaving(false);
     }
@@ -209,24 +189,30 @@ const ClientGallery = () => {
       downloadLogs: [logEntry, ...currentLogs]
     };
 
+    setClient(updatedClient);
+
     try {
-      const success = await savePhotoSelection(updatedClient);
+      const updatedClients = clients.map((c) =>
+        c.id === client.id ? updatedClient : c
+      );
+      await updateClientsMutation.mutateAsync(updatedClients);
       
-      if (success) {
-        try {
-          // Direct file download trick by opening original url
-          const link = document.createElement("a");
-          link.href = photo.original_url;
-          link.target = "_blank";
-          link.download = photo.filename || "foto.jpg";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          toast.success("Download iniciado.");
-        } catch {
-          window.open(photo.original_url, "_blank");
-        }
+      try {
+        // Direct file download trick by opening original url
+        const link = document.createElement("a");
+        link.href = photo.original_url;
+        link.target = "_blank";
+        link.download = photo.filename || "foto.jpg";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Download iniciado.");
+      } catch {
+        window.open(photo.original_url, "_blank");
       }
+    } catch (err: any) {
+      console.error("Erro ao registrar log de download:", err);
+      toast.error("Erro ao processar download: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -347,6 +333,10 @@ const ClientGallery = () => {
               <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-body">
                 <Loader2 className="animate-spin text-primary" size={12} /> Salvando escolha...
               </span>
+            ) : saveError ? (
+              <span className="text-xs text-red-400 flex items-center gap-1.5 font-body">
+                <AlertCircle size={12} /> Erro ao salvar
+              </span>
             ) : (
               <span className="text-xs text-green-400 flex items-center gap-1.5 font-body">
                 <Check size={12} /> Escolhas salvas
@@ -364,6 +354,20 @@ const ClientGallery = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8 space-y-8">
+        {/* Error Banner */}
+        {saveError && (
+          <Card className="bg-red-950/20 border-red-900/30">
+            <CardContent className="p-4 text-red-400 text-sm font-body flex items-center gap-2">
+              <AlertCircle size={16} />
+              <div>
+                <strong>Erro ao salvar:</strong> {saveError}
+                <br />
+                <span className="text-xs text-red-300">Verifique sua conexão de internet e tente novamente.</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* WELCOME / STATS CARD */}
         <Card className="bg-card/30 border-border backdrop-blur">
           <CardContent className="p-6 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
@@ -558,7 +562,7 @@ const ClientGallery = () => {
                 src={client.photos[zoomIndex].thumbnail_url}
                 alt="Ampliada"
                 className="max-w-full max-h-[75vh] object-contain rounded select-none shadow-2xl"
-                onClick={(e) => e.stopPropagation()} // Prevent closing on image click
+                onClick={(e) => e.stopPropagation()}
               />
             </div>
 
@@ -574,7 +578,7 @@ const ClientGallery = () => {
           {/* Bottom Bar inside modal: Actions */}
           <div
             className="p-6 bg-gradient-to-t from-black/85 to-transparent flex flex-col items-center gap-3"
-            onClick={(e) => e.stopPropagation()} // Prevent close
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-4">
               {/* Liked state */}
