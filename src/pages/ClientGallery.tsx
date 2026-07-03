@@ -104,6 +104,9 @@ const ClientGallery = () => {
       }
     }
 
+    // Save previous state for rollback
+    const previousClient = client;
+
     // optimistic update
     const updatedPhotos = client.photos.map((p) =>
       p.id === photoId ? { ...p, status: action } : p
@@ -113,12 +116,15 @@ const ClientGallery = () => {
 
     setSaving(true);
     try {
+      // Use the latest clients from the query and replace the matching client
       const updatedClients = clients.map((c) =>
         c.id === client.id ? updatedClient : c
       );
       await updateClientsMutation.mutateAsync(updatedClients);
     } catch (err) {
-      toast.error("Erro ao salvar sua escolha. Verifique sua conexão.");
+      // Revert optimistic update on failure
+      setClient(previousClient);
+      toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
     } finally {
       setSaving(false);
     }
