@@ -132,23 +132,45 @@ const ClientGallery = () => {
     setClient(updatedClient);
 
     setSaving(true);
-    try {
-      // Use the latest clients from the query and replace the matching client
-      const updatedClients = clients.map((c) =>
-        c.id === client.id ? updatedClient : c
-      );
-      await updateClientsMutation.mutateAsync(updatedClients);
-      
-      // Recalculate selected photos after successful action
-      recalculateSelectedPhotos();
-    } catch (err) {
+
+    const MAX_RETRIES = 2;
+    let lastError: any = null;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        // Use the latest clients from the query and replace the matching client
+        const updatedClients = clients.map((c) =>
+          c.id === client.id ? updatedClient : c
+        );
+        await updateClientsMutation.mutateAsync(updatedClients);
+        
+        // Recalculate selected photos after successful action
+        recalculateSelectedPhotos();
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt < MAX_RETRIES) {
+          // Wait before retrying (exponential backoff: 500ms, 1000ms)
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        }
+      }
+    }
+
+    if (lastError) {
       // Revert optimistic update on failure
       setClient(previousClient);
-      toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
-    } finally {
+      const msg = (lastError as any)?.message || "";
+      if (msg.includes("permission") || msg.includes("RLS") || msg.includes("negada")) {
+        toast.error("Erro de permissão ao salvar. Tente novamente ou recarregue a página.");
+      } else if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || msg.includes("network")) {
+        toast.error("Sem conexão com a internet. Verifique sua rede e tente novamente.");
+      } else {
+        toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
+      }
+    } else {
       setSaving(false);
     }
-  };
   };
 
   const notifySelection = () => {
