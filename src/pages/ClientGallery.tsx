@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
@@ -51,13 +51,14 @@ interface Client {
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const { data: clients = [], isLoading } = useClients();
+  const { data: clients = [], isLoading, refetch: refetchClients } = useClients();
   const updateClientsMutation = useUpdateClients();
 
   const [client, setClient] = useState<Client | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [lastSavedClient, setLastSavedClient] = useState<Client | null>(null);
 
   // Lightbox / Zoom state
   const [zoomIndex, setZoomIndex] = useState<number | null>(null);
@@ -67,6 +68,7 @@ const ClientGallery = () => {
       const found = clients.find((c) => c.id === clientId);
       if (found) {
         setClient(found);
+        setLastSavedClient(found);
         // Check if already logged in (temp storage for current session)
         const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
         if (sessionAuth === "true") {
@@ -89,9 +91,48 @@ const ClientGallery = () => {
     }
   };
 
+  // Função de salvamento com retry automático
+  const savePhotoSelection = useCallback(
+    async (updatedClient: Client, retryCount = 0) => {
+      const maxRetries = 3;
+      
+      try {
+        const updatedClients = clients.map((c) =>
+          c.id === updatedClient.id ? updatedClient : c
+        );
+        
+        await updateClientsMutation.mutateAsync(updatedClients);
+        
+        // Se salvou com sucesso, atualiza o cliente
+        setClient(updatedClient);
+        setLastSavedClient(updatedClient);
+        
+        return true;
+      } catch (err) {
+        console.error(`Erro ao salvar (tentativa ${retryCount + 1}/${maxRetries}):`, err);
+        
+        // Retry automático para conexões móveis instáveis
+        if (retryCount < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Wait 1s, 2s, 3s
+          return savePhotoSelection(updatedClient, retryCount + 1);
+        }
+        
+        // Se falhou após retries, reverte para o último estado salvo
+        if (lastSavedClient) {
+          setClient(lastSavedClient);
+        }
+        
+        toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
+        return false;
+      }
+    },
+    [clients, updateClientsMutation, lastSavedClient]
+  );
+
   const handlePhotoAction = async (photoId: string, action: "liked" | "disliked" | "pending") => {
     if (!client) return;
 
+    // Validação de limite de fotos
     if (action === "liked" && client.maxPhotos) {
       const photoToLike = client.photos.find((p) => p.id === photoId);
       if (photoToLike && !photoToLike.released) {
@@ -104,21 +145,20 @@ const ClientGallery = () => {
       }
     }
 
-    // optimistic update
+    // Atualização otimista (local)
     const updatedPhotos = client.photos.map((p) =>
       p.id === photoId ? { ...p, status: action } : p
     );
     const updatedClient = { ...client, photos: updatedPhotos };
     setClient(updatedClient);
 
+    // Iniciar salvamento
     setSaving(true);
     try {
-      const updatedClients = clients.map((c) =>
-        c.id === client.id ? updatedClient : c
-      );
-      await updateClientsMutation.mutateAsync(updatedClients);
-    } catch (err) {
-      toast.error("Erro ao salvar sua escolha. Verifique sua conexão.");
+      const success = await savePhotoSelection(updatedClient);
+      if (success) {
+        toast.success("✓ Escolha salva com sucesso!");
+      }
     } finally {
       setSaving(false);
     }
@@ -169,31 +209,26 @@ const ClientGallery = () => {
       downloadLogs: [logEntry, ...currentLogs]
     };
 
-    setClient(updatedClient);
-
     try {
-      const updatedClients = clients.map((c) =>
-        c.id === client.id ? updatedClient : c
-      );
-      await updateClientsMutation.mutateAsync(updatedClients);
-    } catch (err) {
-      console.error("Erro ao registrar log de download:", err);
+      const success = await savePhotoSelection(updatedClient);
+      
+      if (success) {
+        try {
+          // Direct file download trick by opening original url
+          const link = document.createElement("a");
+          link.href = photo.original_url;
+          link.target = "_blank";
+          link.download = photo.filename || "foto.jpg";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          toast.success("Download iniciado.");
+        } catch {
+          window.open(photo.original_url, "_blank");
+        }
+      }
     } finally {
       setSaving(false);
-    }
-
-    try {
-      // Direct file download trick by opening original url
-      const link = document.createElement("a");
-      link.href = photo.original_url;
-      link.target = "_blank";
-      link.download = photo.filename || "foto.jpg";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success("Download iniciado.");
-    } catch {
-      window.open(photo.original_url, "_blank");
     }
   };
 
@@ -444,6 +479,7 @@ const ClientGallery = () => {
                             : "bg-secondary border-border text-muted-foreground hover:text-rose-500 hover:bg-rose-950/20"
                         }`}
                         title="Quero esta foto (Gostei)"
+                        disabled={saving}
                       >
                         <Heart size={14} className={isLiked ? "fill-white" : ""} />
                       </button>
@@ -455,6 +491,7 @@ const ClientGallery = () => {
                             : "bg-secondary border-border text-muted-foreground hover:text-red-400 hover:bg-red-950/20"
                         }`}
                         title="Não quero esta foto"
+                        disabled={saving}
                       >
                         <XIcon size={14} />
                       </button>
@@ -466,6 +503,7 @@ const ClientGallery = () => {
                         size="sm"
                         onClick={() => triggerDownload(photo)}
                         className="bg-green-600 hover:bg-green-700 text-white font-body text-[10px] h-7 px-2 flex items-center gap-1"
+                        disabled={saving}
                       >
                         <Download size={11} /> Baixar
                       </Button>
@@ -552,6 +590,7 @@ const ClientGallery = () => {
                     ? "bg-rose-600 border border-rose-600 text-white shadow-lg shadow-rose-600/20"
                     : "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-rose-500 hover:bg-rose-950/20"
                 }`}
+                disabled={saving}
               >
                 <Heart size={14} className={client.photos[zoomIndex].status === "liked" ? "fill-white" : ""} />
                 {client.photos[zoomIndex].status === "liked" ? "Escolhida" : "Escolher esta foto"}
@@ -570,6 +609,7 @@ const ClientGallery = () => {
                     ? "bg-zinc-700 border border-zinc-700 text-white"
                     : "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-red-400 hover:bg-red-950/20"
                 }`}
+                disabled={saving}
               >
                 <XIcon size={14} />
                 {client.photos[zoomIndex].status === "disliked" ? "Recusada" : "Recusar esta foto"}
@@ -580,6 +620,7 @@ const ClientGallery = () => {
                 <Button
                   onClick={() => triggerDownload(client.photos[zoomIndex])}
                   className="bg-green-600 hover:bg-green-700 text-white font-body font-semibold text-xs px-5 py-2.5 rounded-full flex items-center gap-1.5"
+                  disabled={saving}
                 >
                   <Download size={14} /> Baixar Original
                 </Button>
