@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { encryptData, decryptData } from "@/lib/crypto";
 
-// ─── Site Content ────────────────────────────────────────────────────────────
+// ─── Site Content ─────────────────────────────────────────────────────────[...]
 
 export function useSiteContent(sectionKey: string) {
   return useQuery({
@@ -35,7 +35,7 @@ export function useUpdateSiteContent() {
   });
 }
 
-// ─── Theme ───────────────────────────────────────────────────────────────────
+// ─── Theme ───────────────────────────────────────────────────────────[...]
 
 export function useSiteTheme() {
   return useQuery({
@@ -66,7 +66,7 @@ export function useUpdateThemeColor() {
   });
 }
 
-// ─── Portfolio Media ─────────────────────────────────────────────────────────
+// ─── Portfolio Media ─────────────────────────────────────────────────────────[...]
 
 export function usePortfolioMedia(mediaType?: string) {
   return useQuery({
@@ -132,7 +132,7 @@ export function useDeleteMedia() {
   });
 }
 
-// ─── Auth helpers ────────────────────────────────────────────────────────────
+// ─── Auth helpers ──────────────────────────────────────────────────────────[...]
 
 export function useAdminCheck() {
   return useQuery({
@@ -151,7 +151,7 @@ export function useAdminCheck() {
   });
 }
 
-// ─── Client Proofing ─────────────────────────────────────────────────────────
+// ─── Client Proofing ─────────────────────────────────────────────────────────[...]
 
 export function useClients() {
   return useQuery({
@@ -178,6 +178,7 @@ export function useClients() {
       }
       return Array.isArray(content) ? content : [];
     },
+    staleTime: 0, // Sempre considerar como stale para refetch imediato
   });
 }
 
@@ -185,6 +186,8 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
+      console.log("Saving clients data:", clients);
+      
       const encrypted = await encryptData(clients, "liu_record_proofing_vault");
       
       const { data } = await supabase
@@ -198,16 +201,28 @@ export function useUpdateClients() {
           .from("site_content")
           .update({ content: { encrypted } })
           .eq("section_key", "clients");
-        if (error) throw error;
+        if (error) {
+          console.error("Error updating clients:", error);
+          throw error;
+        }
+        console.log("Clients updated successfully");
       } else {
         const { error } = await supabase
           .from("site_content")
           .insert({ section_key: "clients", content: { encrypted } });
-        if (error) throw error;
+        if (error) {
+          console.error("Error inserting clients:", error);
+          throw error;
+        }
+        console.log("Clients inserted successfully");
       }
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["clients_data"] });
+    onSuccess: async () => {
+      // Força refetch imediato dos dados
+      await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
+    },
+    onError: (error) => {
+      console.error("Mutation error:", error);
     },
   });
 }
