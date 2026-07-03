@@ -157,6 +157,8 @@ const ClientGallery = () => {
       }
     }
 
+    setSaving(false);
+
     if (lastError) {
       // Revert optimistic update on failure
       setClient(previousClient);
@@ -168,8 +170,6 @@ const ClientGallery = () => {
       } else {
         toast.error("Erro ao salvar sua escolha. Verifique sua conexão e tente novamente.");
       }
-    } else {
-      setSaving(false);
     }
   };
 
