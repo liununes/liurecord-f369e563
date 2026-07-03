@@ -205,11 +205,16 @@ export function useUpdateClients() {
       const encrypted = await encryptData(clients, "liu_record_proofing_vault");
       console.log("[useUpdateClients] Data encrypted successfully");
       
-      const { data } = await supabase
+      const { data, error: selectError } = await supabase
         .from("site_content")
         .select("id")
         .eq("section_key", "clients")
         .maybeSingle();
+
+      if (selectError) {
+        console.error("[useUpdateClients] SELECT error:", selectError);
+        throw selectError;
+      }
 
       if (data?.id) {
         console.log("[useUpdateClients] Updating existing record");
