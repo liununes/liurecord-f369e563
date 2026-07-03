@@ -157,28 +157,42 @@ export function useClients() {
   return useQuery({
     queryKey: ["clients_data"],
     queryFn: async () => {
+      console.log("[useClients] Fetching clients from Supabase...");
+      
       const { data, error } = await supabase
         .from("site_content")
         .select("content")
         .eq("section_key", "clients")
         .maybeSingle();
 
-      if (error) throw error;
-      if (!data || !data.content) return [];
+      if (error) {
+        console.error("[useClients] Supabase error:", error);
+        throw error;
+      }
+      
+      if (!data || !data.content) {
+        console.log("[useClients] No data found");
+        return [];
+      }
 
       const content = data.content as any;
       if (content && content.encrypted) {
         try {
+          console.log("[useClients] Decrypting data...");
           const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
+          console.log("[useClients] Successfully decrypted clients:", decrypted);
           return Array.isArray(decrypted) ? decrypted : [];
         } catch (e) {
-          console.error("Failed to decrypt clients data", e);
+          console.error("[useClients] Decryption error:", e);
           return [];
         }
       }
+      
+      console.log("[useClients] Returning unencrypted content:", content);
       return Array.isArray(content) ? content : [];
     },
-    staleTime: 0, // Sempre considerar como stale para refetch imediato
+    staleTime: 0, // Sempre considerar como stale
+    refetchInterval: 3000, // Refetch automático a cada 3 segundos para atualização em tempo real
   });
 }
 
@@ -186,9 +200,10 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
-      console.log("Saving clients data:", clients);
+      console.log("[useUpdateClients] Starting mutation with data:", clients);
       
       const encrypted = await encryptData(clients, "liu_record_proofing_vault");
+      console.log("[useUpdateClients] Data encrypted successfully");
       
       const { data } = await supabase
         .from("site_content")
@@ -197,32 +212,38 @@ export function useUpdateClients() {
         .maybeSingle();
 
       if (data?.id) {
+        console.log("[useUpdateClients] Updating existing record");
         const { error } = await supabase
           .from("site_content")
           .update({ content: { encrypted } })
           .eq("section_key", "clients");
         if (error) {
-          console.error("Error updating clients:", error);
+          console.error("[useUpdateClients] Update error:", error);
           throw error;
         }
-        console.log("Clients updated successfully");
+        console.log("[useUpdateClients] Update successful");
       } else {
+        console.log("[useUpdateClients] Inserting new record");
         const { error } = await supabase
           .from("site_content")
           .insert({ section_key: "clients", content: { encrypted } });
         if (error) {
-          console.error("Error inserting clients:", error);
+          console.error("[useUpdateClients] Insert error:", error);
           throw error;
         }
-        console.log("Clients inserted successfully");
+        console.log("[useUpdateClients] Insert successful");
       }
     },
     onSuccess: async () => {
-      // Força refetch imediato dos dados
+      console.log("[useUpdateClients] Mutation successful, invalidating cache and refetching...");
+      // Limpa o cache
+      qc.setQueryData(["clients_data"], undefined);
+      // Força refetch imediato
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
+      console.log("[useUpdateClients] Refetch complete");
     },
     onError: (error) => {
-      console.error("Mutation error:", error);
+      console.error("[useUpdateClients] Mutation error:", error);
     },
   });
 }
