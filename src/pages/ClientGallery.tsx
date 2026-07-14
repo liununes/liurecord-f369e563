@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Heart,
@@ -46,9 +45,6 @@ const ClientGallery = () => {
   }, [client]);
 
   useEffect(() => {
-    // Limpa sessão de admin se existir — garante acesso anônimo para clientes
-    supabase.auth.signOut().catch(() => {});
-
     if (clients.length > 0 && clientId) {
       const found = clients.find((c) => c.id === clientId);
       if (found) {
