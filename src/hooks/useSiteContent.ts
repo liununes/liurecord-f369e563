@@ -181,7 +181,7 @@ export function useClients() {
       
       return Array.isArray(content) ? content : [];
     },
-    staleTime: 0,
+    staleTime: 5 * 60 * 1000,
     refetchInterval: 10000,
   });
 }
