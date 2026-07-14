@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { encryptData, decryptData } from "@/lib/crypto";
 
-// ─── Site Content ─────────────────────────────────────────────────────────[...]
+// ─── Site Content (unchanged) ────────────────────────────────────
 
 export function useSiteContent(sectionKey: string) {
   return useQuery({
@@ -35,7 +34,7 @@ export function useUpdateSiteContent() {
   });
 }
 
-// ─── Theme ───────────────────────────────────────────────────────────[...]
+// ─── Theme ───────────────────────────────────────────────────────
 
 export function useSiteTheme() {
   return useQuery({
@@ -66,7 +65,7 @@ export function useUpdateThemeColor() {
   });
 }
 
-// ─── Portfolio Media ─────────────────────────────────────────────────────────[...]
+// ─── Portfolio Media ─────────────────────────────────────────────
 
 export function usePortfolioMedia(mediaType?: string) {
   return useQuery({
@@ -132,7 +131,7 @@ export function useDeleteMedia() {
   });
 }
 
-// ─── Auth helpers ──────────────────────────────────────────────────────────[...]
+// ─── Auth helpers ────────────────────────────────────────────────
 
 export function useAdminCheck() {
   return useQuery({
@@ -151,38 +150,36 @@ export function useAdminCheck() {
   });
 }
 
-// ─── Client Proofing ─────────────────────────────────────────────────────────[...]
+// ─── Clients (new direct tables) ────────────────────────────────
 
 export function useClients() {
   return useQuery({
     queryKey: ["clients_data"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("site_content")
-        .select("content")
-        .eq("section_key", "clients")
-        .maybeSingle();
-
+        .from("clients")
+        .select("*")
+        .order("created_at", { ascending: false });
       if (error) throw error;
-      
-      if (!data || !data.content) {
-        return [];
-      }
-
-      const content = data.content as any;
-      if (content && content.encrypted) {
-        try {
-          const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
-          return Array.isArray(decrypted) ? decrypted : [];
-        } catch (e) {
-          return [];
-        }
-      }
-      
-      return Array.isArray(content) ? content : [];
+      return data as any[];
     },
-    staleTime: 5 * 60 * 1000,
-    refetchInterval: 10000,
+  });
+}
+
+export function useClientPhotos(clientId: string | undefined) {
+  return useQuery({
+    queryKey: ["client_photos", clientId],
+    queryFn: async () => {
+      if (!clientId) return [];
+      const { data, error } = await supabase
+        .from("client_photos")
+        .select("*")
+        .eq("client_id", clientId)
+        .order("sort_order");
+      if (error) throw error;
+      return data as any[];
+    },
+    enabled: !!clientId,
   });
 }
 
@@ -190,32 +187,7 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
-      const encrypted = await encryptData(clients, "liu_record_proofing_vault");
-      
-      const { data, error: selectError } = await supabase
-        .from("site_content")
-        .select("id")
-        .eq("section_key", "clients")
-        .maybeSingle();
-
-      if (selectError) throw selectError;
-
-      if (data?.id) {
-        const { data: updatedRows, error } = await supabase
-          .from("site_content")
-          .update({ content: { encrypted } })
-          .eq("section_key", "clients")
-          .select("id");
-        if (error) throw error;
-        if (!updatedRows || updatedRows.length === 0) {
-          throw new Error("RLS_BLOCKED");
-        }
-      } else {
-        const { error } = await supabase
-          .from("site_content")
-          .insert({ section_key: "clients", content: { encrypted } });
-        if (error) throw error;
-      }
+      // Legacy: no longer used, kept for compatibility
     },
     onSuccess: async () => {
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
