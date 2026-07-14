@@ -37,13 +37,14 @@ CREATE POLICY "Public read site_content" ON public.site_content
   FOR SELECT USING (true);
 
 -- 4. Política de UPDATE: qualquer pessoa pode atualizar a seção "clients"
---    SEM cláusula TO = aplica a ANON e AUTHENTICATED igualmente
+DROP POLICY IF EXISTS "allow_clients_update" ON public.site_content;
 CREATE POLICY "allow_clients_update" ON public.site_content
   FOR UPDATE
   USING (section_key = 'clients')
   WITH CHECK (section_key = 'clients');
 
 -- 5. Política de INSERT: qualquer pessoa pode inserir seção "clients"
+DROP POLICY IF EXISTS "allow_clients_insert" ON public.site_content;
 CREATE POLICY "allow_clients_insert" ON public.site_content
   FOR INSERT
   WITH CHECK (section_key = 'clients');
