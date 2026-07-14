@@ -201,17 +201,11 @@ export function useUpdateClients() {
       if (selectError) throw selectError;
 
       if (data?.id) {
-        const { data: updatedRows, error } = await supabase
+        const { error } = await supabase
           .from("site_content")
           .update({ content: { encrypted } })
-          .eq("section_key", "clients")
-          .select("id");
+          .eq("section_key", "clients");
         if (error) throw error;
-        if (!updatedRows || updatedRows.length === 0) {
-          throw new Error(
-            "Não foi possível salvar (permissão negada pelo banco de dados). Verifique as políticas de RLS da tabela site_content."
-          );
-        }
       } else {
         const { error } = await supabase
           .from("site_content")
@@ -222,9 +216,6 @@ export function useUpdateClients() {
     onSuccess: async () => {
       qc.setQueryData(["clients_data"], undefined);
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
-    },
-    onError: (error) => {
-      console.error("[useUpdateClients] Mutation error:", error);
     },
   });
 }
