@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { useClients, useClientPhotos } from "@/hooks/useSiteContent";
+import { useClientPhotos } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
 import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,25 +9,25 @@ import { Button } from "@/components/ui/button";
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const { data: clients = [], isLoading: loadingClients } = useClients();
   const { data: photos = [], isLoading: loadingPhotos } = useClientPhotos(clientId);
 
   const [client, setClient] = useState<any>(null);
+  const [loadingClient, setLoadingClient] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (clients.length > 0 && clientId) {
-      const found = clients.find((c: any) => c.id === clientId);
-      if (found) {
-        setClient(found);
-        const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
-        if (sessionAuth === "true") setIsAuthenticated(true);
-      }
-    }
-  }, [clients, clientId]);
+    if (!clientId) return;
+    const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
+    if (sessionAuth === "true") setIsAuthenticated(true);
+
+    supabase.from("clients").select("*").eq("id", clientId).single().then(({ data }) => {
+      setClient(data);
+      setLoadingClient(false);
+    });
+  }, [clientId]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -85,7 +85,7 @@ const ClientGallery = () => {
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  const isLoading = loadingClients || loadingPhotos;
+  const isLoading = loadingClient || loadingPhotos;
 
   if (isLoading) {
     return (

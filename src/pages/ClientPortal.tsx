@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useClients } from "@/hooks/useSiteContent";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Lock, ArrowLeft, Camera, Loader2, Key, User } from "lucide-react";
+import { Lock, Camera, Loader2, Key, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,12 +11,11 @@ import Footer from "@/components/Footer";
 
 const ClientPortal = () => {
   const navigate = useNavigate();
-  const { data: clients = [], isLoading } = useClients();
   const [clientName, setClientName] = useState(() => localStorage.getItem("liurecord_client_name") || "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleAccess = (e: React.FormEvent) => {
+  const handleAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName || !password) {
       toast.error("Preencha todos os campos.");
@@ -25,22 +24,27 @@ const ClientPortal = () => {
 
     setLoading(true);
 
-    // Look for a client whose name matches (case-insensitive) and password matches
-    const found = clients.find(
-      (c) =>
-        c.name.toLowerCase().trim().includes(clientName.toLowerCase().trim()) &&
-        c.password.trim() === password.trim()
-    );
+    const { data, error } = await supabase
+      .from("clients")
+      .select("id, name, password")
+      .ilike("name", `%${clientName.trim()}%`)
+      .limit(5);
 
-    if (found) {
+    if (error || !data || data.length === 0) {
+      toast.error("Cliente não encontrado.");
+      setLoading(false);
+      return;
+    }
+
+    const match = data.find((c) => c.password.trim() === password.trim());
+
+    if (match) {
       localStorage.setItem("liurecord_client_name", clientName.trim());
-      sessionStorage.setItem(`auth_client_${found.id}`, "true");
-      toast.success(`Bem-vindo, ${found.name}!`);
-      setTimeout(() => {
-        navigate(`/galeria/${found.id}`);
-      }, 800);
+      sessionStorage.setItem(`auth_client_${match.id}`, "true");
+      toast.success(`Bem-vindo, ${match.name}!`);
+      setTimeout(() => navigate(`/galeria/${match.id}`), 800);
     } else {
-      toast.error("Nome do cliente ou senha incorretos.");
+      toast.error("Senha incorreta.");
       setLoading(false);
     }
   };
@@ -50,7 +54,6 @@ const ClientPortal = () => {
       <Header />
 
       <main className="flex-1 flex items-center justify-center px-4 py-24 relative overflow-hidden">
-        {/* Decorative Glow */}
         <div className="absolute top-1/3 left-1/3 w-80 h-80 bg-primary/10 rounded-full blur-[100px] pointer-events-none" />
         <div className="absolute bottom-1/3 right-1/3 w-80 h-80 bg-primary/5 rounded-full blur-[100px] pointer-events-none" />
 
@@ -61,7 +64,7 @@ const ClientPortal = () => {
             </div>
             <CardTitle className="font-display text-xl text-foreground">Portal do Cliente</CardTitle>
             <CardDescription className="font-body text-xs text-muted-foreground mt-1">
-              Acesse sua galeria exclusiva para visualizar, selecionar e baixar suas fotos.
+              Acesse sua galeria exclusiva para visualizar e selecionar suas fotos.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -99,13 +102,9 @@ const ClientPortal = () => {
                 className="w-full bg-gradient-gold text-primary-foreground font-body font-semibold py-5 mt-2 flex items-center justify-center gap-2"
               >
                 {loading ? (
-                  <>
-                    <Loader2 className="animate-spin" size={16} /> Acessando...
-                  </>
+                  <><Loader2 className="animate-spin" size={16} /> Acessando...</>
                 ) : (
-                  <>
-                    <Lock size={16} /> Entrar na Galeria
-                  </>
+                  <><Lock size={16} /> Entrar na Galeria</>
                 )}
               </Button>
             </form>
