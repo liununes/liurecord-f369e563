@@ -12,7 +12,7 @@ import Footer from "@/components/Footer";
 const ClientPortal = () => {
   const navigate = useNavigate();
   const { data: clients = [], isLoading } = useClients();
-  const [clientName, setClientName] = useState("");
+  const [clientName, setClientName] = useState(() => localStorage.getItem("liurecord_client_name") || "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,7 +33,7 @@ const ClientPortal = () => {
     );
 
     if (found) {
-      // Set session authorization
+      localStorage.setItem("liurecord_client_name", clientName.trim());
       sessionStorage.setItem(`auth_client_${found.id}`, "true");
       toast.success(`Bem-vindo, ${found.name}!`);
       setTimeout(() => {
