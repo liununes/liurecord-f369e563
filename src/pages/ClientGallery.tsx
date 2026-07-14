@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import {
   Heart,
@@ -19,34 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-
-interface DownloadLog {
-  id: string;
-  photoId: string;
-  filename: string;
-  timestamp: string;
-  ip: string;
-}
-
-interface ClientPhoto {
-  id: string;
-  original_url: string;
-  thumbnail_url: string;
-  filename: string;
-  status: "pending" | "liked" | "disliked";
-  released: boolean;
-}
-
-interface Client {
-  id: string;
-  name: string;
-  password: string;
-  watermarkText?: string;
-  maxPhotos?: number;
-  photos: ClientPhoto[];
-  created_at: string;
-  downloadLogs?: DownloadLog[];
-}
+import type { DownloadLog, ClientPhoto, Client } from "@/types/client";
 
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
@@ -68,16 +42,13 @@ const ClientGallery = () => {
     const selectedPhotos = client.photos.filter(p => p.status === "liked");
     const totalLiked = selectedPhotos.length;
     
-    // If there's a maxPhotos limit, display appropriate message
-    if (client.maxPhotos && totalLiked >= client.maxPhotos) {
-      console.log(`✓ Você já selecionou o máximo de ${client.maxPhotos} fotos.`);
-    } else if (totalLiked > 0) {
-      console.log(`✓ Você já selecionou ${totalLiked} foto${totalLiked !== 1 ? 's' : ''} como escolhidas.`);
-    }
     return totalLiked;
   }, [client]);
 
   useEffect(() => {
+    // Limpa sessão de admin se existir — garante acesso anônimo para clientes
+    supabase.auth.signOut().catch(() => {});
+
     if (clients.length > 0 && clientId) {
       const found = clients.find((c) => c.id === clientId);
       if (found) {
@@ -111,7 +82,7 @@ const ClientGallery = () => {
 
     if (action === "liked" && client.maxPhotos) {
       const photoToLike = client.photos.find((p) => p.id === photoId);
-      if (photoToLike && !photoToLike.released) {
+      if (photoToLike) {
         const unreleasedLikedCount = client.photos.filter((p) => p.status === "liked" && !p.released).length;
         const currentlyLiked = photoToLike.status === "liked";
         if (!currentlyLiked && unreleasedLikedCount >= client.maxPhotos) {
@@ -124,10 +95,24 @@ const ClientGallery = () => {
     // Save previous state for rollback
     const previousClient = client;
 
-    // optimistic update
-    const updatedPhotos = client.photos.map((p) =>
-      p.id === photoId ? { ...p, status: action } : p
-    );
+    // optimistic update with auto-release logic
+    const updatedPhotos = client.photos.map((p) => {
+      if (p.id !== photoId) return p;
+      const newStatus = action;
+      let newReleased = p.released;
+      if (client.maxPhotos) {
+        if (newStatus === "liked") {
+          const otherLiked = client.photos.filter((x) => x.id !== photoId && x.status === "liked" && x.released).length;
+          const limit = client.maxPhotos;
+          if (otherLiked + 1 <= limit) {
+            newReleased = true;
+          }
+        } else {
+          newReleased = false;
+        }
+      }
+      return { ...p, status: newStatus, released: newReleased };
+    });
     const updatedClient = { ...client, photos: updatedPhotos };
     setClient(updatedClient);
 
@@ -232,14 +217,16 @@ const ClientGallery = () => {
     }
 
     try {
-      // Direct file download trick by opening original url
+      const response = await fetch(photo.original_url);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = photo.original_url;
-      link.target = "_blank";
+      link.href = url;
       link.download = photo.filename || "foto.jpg";
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      URL.revokeObjectURL(url);
       toast.success("Download iniciado.");
     } catch {
       window.open(photo.original_url, "_blank");
@@ -336,7 +323,6 @@ const ClientGallery = () => {
   // GALLERY VIEW (AUTHENTICATED)
   const photosCount = client.photos?.length || 0;
   const likedPhotos = client.photos?.filter((p) => p.status === "liked") || [];
-  const unreleasedLikedPhotos = client.photos?.filter((p) => p.status === "liked" && !p.released) || [];
   const dislikedPhotos = client.photos?.filter((p) => p.status === "disliked") || [];
   const releasedPhotos = client.photos?.filter((p) => p.released) || [];
 
@@ -405,7 +391,7 @@ const ClientGallery = () => {
               <div className="bg-rose-950/20 border border-rose-900/30 rounded-lg px-4 py-3 text-center min-w-[90px] flex-1 lg:flex-none">
                 <span className="block text-[10px] text-rose-400 uppercase font-semibold">Escolhidas</span>
                 <span className="text-xl font-display font-bold text-rose-500">
-                  {client.maxPhotos ? unreleasedLikedPhotos.length : likedPhotos.length}
+                  {likedPhotos.length}
                   {client.maxPhotos ? ` / ${client.maxPhotos}` : ""}
                 </span>
               </div>
@@ -566,7 +552,7 @@ const ClientGallery = () => {
             {/* Image display */}
             <div className="mx-auto max-w-[90%] max-h-full flex items-center justify-center relative">
               <img
-                src={client.photos[zoomIndex].thumbnail_url}
+                src={client.photos[zoomIndex].original_url}
                 alt="Ampliada"
                 className="max-w-full max-h-[75vh] object-contain rounded select-none shadow-2xl"
                 onClick={(e) => e.stopPropagation()} // Prevent closing on image click

@@ -30,34 +30,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-
-interface DownloadLog {
-  id: string;
-  photoId: string;
-  filename: string;
-  timestamp: string;
-  ip: string;
-}
-
-interface ClientPhoto {
-  id: string;
-  original_url: string;
-  thumbnail_url: string;
-  filename: string;
-  status: "pending" | "liked" | "disliked";
-  released: boolean;
-}
-
-interface Client {
-  id: string;
-  name: string;
-  password: string;
-  watermarkText?: string;
-  maxPhotos?: number;
-  photos: ClientPhoto[];
-  created_at: string;
-  downloadLogs?: DownloadLog[];
-}
+import type { DownloadLog, ClientPhoto, Client } from "@/types/client";
 
 const AdminClientsTab = () => {
   const { data: clients = [], isLoading } = useClients();
@@ -147,6 +120,9 @@ const AdminClientsTab = () => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedClient) return;
 
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
     setUploading(true);
     setUploadProgress(0);
     const total = files.length;
@@ -155,6 +131,21 @@ const AdminClientsTab = () => {
 
     for (let i = 0; i < total; i++) {
       const file = files[i];
+
+      if (!ALLOWED_TYPES.includes(file.type)) {
+        toast.error(`"${file.name}" não é um formato suportado. Use JPG, PNG ou WebP.`);
+        processed++;
+        setUploadProgress(Math.round((processed / total) * 100));
+        continue;
+      }
+
+      if (file.size > MAX_FILE_SIZE) {
+        toast.error(`"${file.name}" excede o limite de 10MB. Tamanho: ${(file.size / 1024 / 1024).toFixed(1)}MB`);
+        processed++;
+        setUploadProgress(Math.round((processed / total) * 100));
+        continue;
+      }
+
       try {
         const watermark = selectedClient.watermarkText || "LIU RECORD";
         
@@ -291,7 +282,20 @@ const AdminClientsTab = () => {
   const handleDeletePhoto = async (photoId: string) => {
     if (!selectedClient || !confirm("Excluir esta foto permanentemente?")) return;
     try {
-      // Optioanlly delete from storage too. But to keep it simple, we just remove the reference.
+      const photoToDelete = selectedClient.photos.find((p) => p.id === photoId);
+      
+      if (photoToDelete) {
+        const originalPath = photoToDelete.original_url.split("/storage/v1/object/public/media/")[1];
+        const thumbnailPath = photoToDelete.thumbnail_url.split("/storage/v1/object/public/media/")[1];
+        
+        if (originalPath) {
+          await supabase.storage.from("media").remove([originalPath]);
+        }
+        if (thumbnailPath) {
+          await supabase.storage.from("media").remove([thumbnailPath]);
+        }
+      }
+
       const updatedPhotos = selectedClient.photos.filter((p) => p.id !== photoId);
       const updatedClient = { ...selectedClient, photos: updatedPhotos };
       const updatedClients = clients.map((c) =>

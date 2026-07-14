@@ -13,7 +13,7 @@ async function getKey(password: string) {
     {
       name: "PBKDF2",
       salt: SALT,
-      iterations: 1000,
+      iterations: 600000,
       hash: "SHA-256",
     },
     keyMaterial,

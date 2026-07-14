@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useClients } from "@/hooks/useSiteContent";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Lock, ArrowLeft, Camera, Loader2, Key, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,11 @@ const ClientPortal = () => {
   const [clientName, setClientName] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Limpa sessão de admin ao acessar o portal do cliente
+  useEffect(() => {
+    supabase.auth.signOut().catch(() => {});
+  }, []);
 
   const handleAccess = (e: React.FormEvent) => {
     e.preventDefault();
