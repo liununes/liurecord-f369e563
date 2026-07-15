@@ -219,29 +219,21 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
-      const { data, error: selectError } = await supabase
+      // Try update first
+      const { data, error } = await supabase
         .from("site_content")
-        .select("id")
+        .update({ content: clients })
         .eq("section_key", "clients")
-        .maybeSingle();
+        .select();
 
-      if (selectError) throw selectError;
+      if (error) throw error;
 
-      if (data?.id) {
-        const { data: updatedRows, error } = await supabase
-          .from("site_content")
-          .update({ content: clients })
-          .eq("section_key", "clients")
-          .select("id");
-        if (error) throw error;
-        if (!updatedRows || updatedRows.length === 0) {
-          throw new Error("RLS_BLOCKED");
-        }
-      } else {
-        const { error } = await supabase
+      // If no rows updated, insert new row
+      if (!data || data.length === 0) {
+        const { error: insertErr } = await supabase
           .from("site_content")
           .insert({ section_key: "clients", content: clients });
-        if (error) throw error;
+        if (insertErr) throw insertErr;
       }
     },
     onSuccess: async () => {
