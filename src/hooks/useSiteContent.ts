@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { decryptData } from "@/lib/crypto";
 
 // ─── Site Content ────────────────────────────────────────────────
 
@@ -166,6 +167,18 @@ export function useClients() {
       if (!data || !data.content) return [];
 
       const content = data.content as any;
+
+      // Handle encrypted data (old format)
+      if (content.encrypted) {
+        try {
+          const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
+          return Array.isArray(decrypted) ? decrypted : [];
+        } catch {
+          return [];
+        }
+      }
+
+      // Handle plain JSON (new format)
       return Array.isArray(content) ? content : [];
     },
   });
@@ -185,7 +198,18 @@ export function useClientPhotos(clientId: string | undefined) {
       if (error) throw error;
       if (!data || !data.content) return [];
 
-      const clients = Array.isArray(data.content) ? data.content : [];
+      const content = data.content as any;
+      let clients: any[] = [];
+
+      if (content.encrypted) {
+        try {
+          const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
+          clients = Array.isArray(decrypted) ? decrypted : [];
+        } catch { return []; }
+      } else {
+        clients = Array.isArray(content) ? content : [];
+      }
+
       const client = clients.find((c: any) => c.id === clientId);
       return client?.photos || [];
     },
