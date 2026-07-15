@@ -219,22 +219,13 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
-      // Try update first
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("site_content")
-        .update({ content: clients })
-        .eq("section_key", "clients")
-        .select();
-
+        .upsert(
+          { section_key: "clients", content: clients },
+          { onConflict: "section_key" }
+        );
       if (error) throw error;
-
-      // If no rows updated, insert new row
-      if (!data || data.length === 0) {
-        const { error: insertErr } = await supabase
-          .from("site_content")
-          .insert({ section_key: "clients", content: clients });
-        if (insertErr) throw insertErr;
-      }
     },
     onSuccess: async () => {
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
