@@ -151,7 +151,7 @@ export function useAdminCheck() {
   });
 }
 
-// ─── Client Proofing (plain JSON in site_content, no encryption) ─
+// ─── Client Proofing ─────────────────────────────────────────────
 
 export function useClients() {
   return useQuery({
@@ -168,17 +168,15 @@ export function useClients() {
 
       const content = data.content as any;
 
-      // Handle encrypted data (old format)
+      // Encrypted format (old)
       if (content.encrypted) {
         try {
           const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
           return Array.isArray(decrypted) ? decrypted : [];
-        } catch {
-          return [];
-        }
+        } catch { return []; }
       }
 
-      // Handle plain JSON (new format)
+      // Plain JSON (new)
       return Array.isArray(content) ? content : [];
     },
   });
