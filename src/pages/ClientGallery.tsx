@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useClients, useClientPhotos, useUpdateClients } from "@/hooks/useSiteContent";
+import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
 import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,15 +8,16 @@ import { Button } from "@/components/ui/button";
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const { data: clients = [], isLoading: loadingClients } = useClients();
-  const { data: photos = [], isLoading: loadingPhotos } = useClientPhotos(clientId);
+  const { data: clients = [], isLoading } = useClients();
   const updateClients = useUpdateClients();
 
   const [client, setClient] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
-  const [saving, setSaving] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+
+  const photos = client?.photos || [];
 
   useEffect(() => {
     if (clients.length > 0 && clientId) {
@@ -42,25 +43,25 @@ const ClientGallery = () => {
   };
 
   const toggleLike = async (photoId: string) => {
-    const photo = photos.find((p: any) => p.id === photoId);
-    if (!photo || !client) return;
+    if (!client || saving) return;
 
-    const newStatus = photo.status === "liked" ? "pending" : "liked";
-    const updatedPhotos = client.photos.map((p: any) =>
-      p.id === photoId ? { ...p, status: newStatus } : p
+    const newPhotos = client.photos.map((p: any) =>
+      p.id === photoId ? { ...p, status: p.status === "liked" ? "pending" : "liked" } : p
     );
-    const updatedClients = clients.map((c: any) =>
-      c.id === client.id ? { ...c, photos: updatedPhotos } : c
-    );
+    const updatedClient = { ...client, photos: newPhotos };
+    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
 
-    setSaving(photoId);
+    setClient(updatedClient);
+    setSaving(true);
+
     try {
       await updateClients.mutateAsync(updatedClients);
-      setClient({ ...client, photos: updatedPhotos });
-    } catch {
-      toast.error("Erro ao salvar.");
+      toast.success("Escolha salva!");
+    } catch (err: any) {
+      setClient(client);
+      toast.error("Erro ao salvar. Tente novamente.");
     }
-    setSaving(null);
+    setSaving(false);
   };
 
   const downloadPhoto = async (photo: any) => {
@@ -82,13 +83,10 @@ const ClientGallery = () => {
   };
 
   const sendWhatsApp = () => {
-    if (!client) return;
     const liked = photos.filter((p: any) => p.status === "liked");
     const text = `Olá! Concluí a seleção. Escolhi ${liked.length} fotos de ${photos.length} total.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
-
-  const isLoading = loadingClients || loadingPhotos;
 
   if (isLoading) {
     return (
@@ -123,6 +121,7 @@ const ClientGallery = () => {
           <form onSubmit={handleLogin} className="space-y-4">
             <input
               type="password"
+              autoComplete="new-password"
               placeholder="Insira a senha"
               className="w-full bg-card/50 border border-border font-body text-center tracking-widest text-lg py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               value={passwordInput}
@@ -200,14 +199,14 @@ const ClientGallery = () => {
                   <div className="p-2 flex items-center justify-between bg-card/80 border-t border-border/50">
                     <button
                       onClick={() => toggleLike(photo.id)}
-                      disabled={saving === photo.id}
+                      disabled={saving}
                       className={`p-1.5 rounded-full border transition-all ${
                         isLiked
                           ? "bg-rose-600 border-rose-600 text-white"
                           : "bg-secondary border-border text-muted-foreground hover:text-rose-500"
                       }`}
                     >
-                      {saving === photo.id ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
                     </button>
                     {photo.released ? (
                       <Button size="sm" onClick={() => downloadPhoto(photo)} className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2">
