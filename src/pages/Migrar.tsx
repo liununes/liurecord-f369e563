@@ -5,6 +5,43 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2, Check, AlertTriangle } from "lucide-react";
 
+const MIGRATE_SQL = `
+CREATE TABLE IF NOT EXISTS public.clients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  password TEXT NOT NULL,
+  watermark_text TEXT DEFAULT 'LIU RECORD',
+  max_photos INTEGER,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS public.client_photos (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  client_id UUID NOT NULL REFERENCES public.clients(id) ON DELETE CASCADE,
+  original_url TEXT NOT NULL,
+  thumbnail_url TEXT NOT NULL,
+  filename TEXT,
+  status TEXT DEFAULT 'pending',
+  released BOOLEAN DEFAULT false,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.client_photos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "allow_all_clients" ON public.clients;
+CREATE POLICY "allow_all_clients" ON public.clients FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "allow_all_photos" ON public.client_photos;
+CREATE POLICY "allow_all_photos" ON public.client_photos FOR ALL USING (true) WITH CHECK (true);
+
+GRANT ALL ON public.clients TO anon;
+GRANT ALL ON public.clients TO authenticated;
+GRANT ALL ON public.client_photos TO anon;
+GRANT ALL ON public.client_photos TO authenticated;
+`;
+
 const Migrar = () => {
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [log, setLog] = useState<string[]>([]);
@@ -16,8 +53,32 @@ const Migrar = () => {
     setLog([]);
 
     try {
-      addLog("Buscando dados antigos do site_content...");
+      // 1. Tentar criar tabela via RPC (Supabase SQL RPC)
+      addLog("Verificando tabelas...");
 
+      const { error: rpcErr } = await supabase.rpc("exec_sql" as any, { query: MIGRATE_SQL }).single();
+
+      if (rpcErr) {
+        // Fallback: tentar criar via insert direto pra ver se a tabela existe
+        addLog("Tentando via API...");
+        const { error: testErr } = await supabase.from("clients").select("id").limit(1);
+
+        if (testErr && testErr.message.includes("Could not find the table")) {
+          addLog("Tabela não encontrada. Criando via Supabase Dashboard...");
+
+          // Copiar SQL para clipboard
+          await navigator.clipboard.writeText(MIGRATE_SQL);
+          addLog("SQL copiado para a área de transferência!");
+          addLog("Abra o Supabase Dashboard → SQL Editor → Cole e rode o SQL.");
+          addLog("Depois clique 'Rodar Migração' novamente.");
+          setStatus("error");
+          return;
+        }
+      }
+
+      addLog("Tabelas OK! Buscando dados antigos...");
+
+      // 2. Buscar dados antigos do site_content
       const { data: row, error: fetchErr } = await supabase
         .from("site_content")
         .select("content")
@@ -26,7 +87,7 @@ const Migrar = () => {
 
       if (fetchErr) throw fetchErr;
       if (!row || !row.content) {
-        addLog("Nenhum dado encontrado no site_content. Nada a migrar.");
+        addLog("Nenhum dado antigo encontrado. Tabelas prontas!");
         setStatus("done");
         return;
       }
@@ -44,60 +105,78 @@ const Migrar = () => {
 
       addLog(`${clients.length} cliente(s) encontrado(s).`);
 
-      if (clients.length === 0) {
-        addLog("Nenhum cliente para migrar.");
-        setStatus("done");
-        return;
-      }
-
       for (const oldClient of clients) {
-        addLog(`Migrando cliente: ${oldClient.name}...`);
+        addLog(`Migrando: ${oldClient.name}...`);
 
-        const { data: newClient, error: clientErr } = await supabase
+        // Upsert cliente
+        const { data: existingClient } = await supabase
           .from("clients")
-          .insert({
-            id: oldClient.id,
-            name: oldClient.name,
-            password: oldClient.password,
-            watermark_text: oldClient.watermarkText || "LIU RECORD",
-            max_photos: oldClient.maxPhotos || null,
-            created_at: oldClient.created_at || new Date().toISOString(),
-          })
-          .select()
-          .single();
+          .select("id")
+          .eq("id", oldClient.id)
+          .maybeSingle();
 
-        if (clientErr) {
-          addLog(`Erro ao criar cliente "${oldClient.name}": ${clientErr.message}`);
-          continue;
+        let clientId = oldClient.id;
+
+        if (existingClient) {
+          addLog(`  Cliente já existe, pulando...`);
+          clientId = existingClient.id;
+        } else {
+          const { data: newClient, error: clientErr } = await supabase
+            .from("clients")
+            .insert({
+              id: oldClient.id,
+              name: oldClient.name,
+              password: oldClient.password,
+              watermark_text: oldClient.watermarkText || "LIU RECORD",
+              max_photos: oldClient.maxPhotos || null,
+              created_at: oldClient.created_at || new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (clientErr) {
+            addLog(`  Erro: ${clientErr.message}`);
+            continue;
+          }
+          clientId = newClient.id;
+          addLog(`  Cliente criado!`);
         }
 
+        // Migrar fotos
         if (oldClient.photos && oldClient.photos.length > 0) {
-          addLog(`  -> ${oldClient.photos.length} foto(s) para migrar...`);
+          const { count } = await supabase
+            .from("client_photos")
+            .select("id", { count: "exact", head: true })
+            .eq("client_id", clientId);
 
-          const photoRows = oldClient.photos.map((p: any, i: number) => ({
-            id: p.id,
-            client_id: newClient.id,
-            original_url: p.original_url,
-            thumbnail_url: p.thumbnail_url,
-            filename: p.filename || "foto.jpg",
-            status: p.status || "pending",
-            released: p.released || false,
-            sort_order: i,
-            created_at: oldClient.created_at || new Date().toISOString(),
-          }));
-
-          const { error: photosErr } = await supabase.from("client_photos").insert(photoRows);
-          if (photosErr) {
-            addLog(`  Erro ao migrar fotos: ${photosErr.message}`);
+          if (count && count > 0) {
+            addLog(`  ${count} foto(s) já migrada(s), pulando...`);
           } else {
-            addLog(`  OK! ${photoRows.length} foto(s) migrada(s).`);
+            const photoRows = oldClient.photos.map((p: any, i: number) => ({
+              id: p.id,
+              client_id: clientId,
+              original_url: p.original_url,
+              thumbnail_url: p.thumbnail_url,
+              filename: p.filename || "foto.jpg",
+              status: p.status || "pending",
+              released: p.released || false,
+              sort_order: i,
+              created_at: oldClient.created_at || new Date().toISOString(),
+            }));
+
+            const { error: photosErr } = await supabase.from("client_photos").insert(photoRows);
+            if (photosErr) {
+              addLog(`  Erro fotos: ${photosErr.message}`);
+            } else {
+              addLog(`  ${photoRows.length} foto(s) migrada(s)!`);
+            }
           }
         }
       }
 
       addLog("Migração concluída!");
       setStatus("done");
-      toast.success("Migração concluída! Seus clientes voltaram.");
+      toast.success("Migração concluída!");
     } catch (err: any) {
       addLog(`Erro: ${err.message}`);
       setStatus("error");
@@ -135,7 +214,7 @@ const Migrar = () => {
 
         {status === "error" && (
           <div className="flex items-center justify-center gap-2 text-red-400">
-            <AlertTriangle size={20} /> Erro durante a migração.
+            <AlertTriangle size={20} /> Verifique as instruções abaixo.
           </div>
         )}
 
@@ -149,9 +228,15 @@ const Migrar = () => {
           </div>
         )}
 
+        {status === "error" && log.some(l => l.includes("SQL copiado")) && (
+          <Button onClick={migrate} className="w-full bg-gradient-gold text-primary-foreground font-body font-semibold py-5">
+            Rodar Migração (depois de colar o SQL)
+          </Button>
+        )}
+
         {status === "done" && (
           <p className="text-xs text-muted-foreground text-center font-body">
-            Agora acesse <strong>/clientes</strong> normalmente. Pode apagar esta página.
+            Acesse <strong>/clientes</strong> normalmente. Pode apagar <code>/migrar</code> do código.
           </p>
         )}
       </div>
