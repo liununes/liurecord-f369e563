@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useClients } from "@/hooks/useSiteContent";
+import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { createWatermarkedThumbnail } from "@/lib/watermark";
 import { toast } from "sonner";
@@ -10,24 +10,20 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { useQueryClient } from "@tanstack/react-query";
 
 const AdminClientsTab = () => {
   const { data: clients = [], isLoading } = useClients();
-  const qc = useQueryClient();
+  const updateClients = useUpdateClients();
   const [searchTerm, setSearchTerm] = useState("");
   const [view, setView] = useState<"list" | "edit">("list");
   const [selectedClient, setSelectedClient] = useState<any>(null);
-  const [selectedPhotos, setSelectedPhotos] = useState<any[]>([]);
 
-  // Create form
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newWatermark, setNewWatermark] = useState("LIU RECORD");
   const [newMaxPhotos, setNewMaxPhotos] = useState("");
 
-  // Edit state
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editWatermark, setEditWatermark] = useState("");
@@ -36,33 +32,39 @@ const AdminClientsTab = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const refetch = () => qc.invalidateQueries({ queryKey: ["clients_data"] });
-
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName || !newPassword) { toast.error("Preencha nome e senha."); return; }
 
-    const { error } = await supabase.from("clients").insert({
+    const newClient = {
+      id: crypto.randomUUID(),
       name: newName,
       password: newPassword,
       watermark_text: newWatermark || "LIU RECORD",
-      max_photos: newMaxPhotos ? parseInt(newMaxPhotos) : null,
-    });
-    if (error) { toast.error("Erro: " + error.message); return; }
+      max_photos: newMaxPhotos ? parseInt(newMaxPhotos) : undefined,
+      photos: [],
+      created_at: new Date().toISOString(),
+    };
 
-    toast.success("Cliente criado!");
-    setNewName(""); setNewPassword(""); setNewWatermark("LIU RECORD"); setNewMaxPhotos("");
-    setShowCreateForm(false);
-    refetch();
+    try {
+      await updateClients.mutateAsync([newClient, ...clients]);
+      toast.success("Cliente criado!");
+      setNewName(""); setNewPassword(""); setNewWatermark("LIU RECORD"); setNewMaxPhotos("");
+      setShowCreateForm(false);
+    } catch (err: any) {
+      toast.error("Erro: " + err.message);
+    }
   };
 
   const handleDeleteClient = async (id: string, name: string) => {
-    if (!confirm(`Excluir "${name}"? Todas as fotos serão perdidas.`)) return;
-    const { error } = await supabase.from("clients").delete().eq("id", id);
-    if (error) { toast.error("Erro: " + error.message); return; }
-    toast.success("Cliente excluído.");
-    if (selectedClient?.id === id) { setView("list"); setSelectedClient(null); }
-    refetch();
+    if (!confirm(`Excluir "${name}"?`)) return;
+    try {
+      await updateClients.mutateAsync(clients.filter((c: any) => c.id !== id));
+      toast.success("Cliente excluído.");
+      if (selectedClient?.id === id) { setView("list"); setSelectedClient(null); }
+    } catch (err: any) {
+      toast.error("Erro: " + err.message);
+    }
   };
 
   const copyLink = (id: string) => {
@@ -70,10 +72,8 @@ const AdminClientsTab = () => {
     toast.success("Link copiado!");
   };
 
-  const loadClientPhotos = async (client: any) => {
-    const { data } = await supabase.from("client_photos").select("*").eq("client_id", client.id).order("sort_order");
+  const handleSelectClient = (client: any) => {
     setSelectedClient(client);
-    setSelectedPhotos(data || []);
     setEditName(client.name);
     setEditPassword(client.password);
     setEditWatermark(client.watermark_text || "LIU RECORD");
@@ -83,16 +83,23 @@ const AdminClientsTab = () => {
 
   const handleSaveSettings = async () => {
     if (!selectedClient) return;
-    const { error } = await supabase.from("clients").update({
+    if (!editName.trim() || !editPassword.trim()) { toast.error("Preencha nome e senha."); return; }
+
+    const updated = {
+      ...selectedClient,
       name: editName.trim(),
       password: editPassword.trim(),
       watermark_text: editWatermark.trim() || "LIU RECORD",
-      max_photos: editMaxPhotos ? parseInt(editMaxPhotos) : null,
-    }).eq("id", selectedClient.id);
-    if (error) { toast.error("Erro: " + error.message); return; }
-    setSelectedClient({ ...selectedClient, name: editName.trim(), password: editPassword.trim() });
-    toast.success("Configurações salvas!");
-    refetch();
+      max_photos: editMaxPhotos ? parseInt(editMaxPhotos) : undefined,
+    };
+
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updated : c));
+      setSelectedClient(updated);
+      toast.success("Salvo!");
+    } catch (err: any) {
+      toast.error("Erro: " + err.message);
+    }
   };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,12 +113,12 @@ const AdminClientsTab = () => {
 
     const total = files.length;
     let done = 0;
-    const newPhotos: any[] = [];
+    const updatedPhotos = [...(selectedClient.photos || [])];
 
     for (let i = 0; i < total; i++) {
       const file = files[i];
       if (!ALLOWED.includes(file.type) || file.size > MAX_SIZE) {
-        toast.error(`"${file.name}" inválido (máx 10MB, JPG/PNG/WebP).`);
+        toast.error(`"${file.name}" inválido.`);
         done++; setUploadProgress(Math.round((done / total) * 100));
         continue;
       }
@@ -131,57 +138,77 @@ const AdminClientsTab = () => {
         if (e2) throw e2;
         const thumbUrl = supabase.storage.from("media").getPublicUrl(thumbPath).data.publicUrl;
 
-        const { data: inserted, error: e3 } = await supabase.from("client_photos").insert({
-          client_id: selectedClient.id, original_url: orig, thumbnail_url: thumbUrl, filename: file.name,
-        }).select();
-        if (e3) throw e3;
-        if (inserted) newPhotos.push(inserted[0]);
+        updatedPhotos.push({
+          id: `${ts}-${rand}`,
+          original_url: orig,
+          thumbnail_url: thumbUrl,
+          filename: file.name,
+          status: "pending",
+          released: false,
+        });
       } catch (err: any) {
         toast.error(`Erro "${file.name}": ${err.message}`);
       }
       done++; setUploadProgress(Math.round((done / total) * 100));
     }
 
-    setSelectedPhotos(prev => [...prev, ...newPhotos]);
+    try {
+      const updatedClients = clients.map((c: any) =>
+        c.id === selectedClient.id ? { ...c, photos: updatedPhotos } : c
+      );
+      await updateClients.mutateAsync(updatedClients);
+      setSelectedClient({ ...selectedClient, photos: updatedPhotos });
+      toast.success("Foto(s) enviada(s)!");
+    } catch (err: any) {
+      toast.error("Erro ao salvar: " + err.message);
+    }
     setUploading(false); setUploadProgress(0);
-    if (newPhotos.length > 0) toast.success(`${newPhotos.length} foto(s) enviada(s)!`);
   };
 
   const togglePhotoRelease = async (photoId: string, current: boolean) => {
-    const { error } = await supabase.from("client_photos").update({ released: !current }).eq("id", photoId);
-    if (error) { toast.error("Erro"); return; }
-    setSelectedPhotos(prev => prev.map(p => p.id === photoId ? { ...p, released: !current } : p));
-    toast.success(!current ? "Liberada!" : "Bloqueada.");
+    if (!selectedClient) return;
+    const updatedPhotos = selectedClient.photos.map((p: any) =>
+      p.id === photoId ? { ...p, released: !current } : p
+    );
+    const updatedClient = { ...selectedClient, photos: updatedPhotos };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success(!current ? "Liberada!" : "Bloqueada.");
+    } catch { toast.error("Erro"); }
   };
 
   const handleBulkRelease = async (type: "all" | "liked" | "block") => {
     if (!selectedClient) return;
-    const updates = selectedPhotos.map(p => {
-      if (type === "all") return supabase.from("client_photos").update({ released: true }).eq("id", p.id);
-      if (type === "liked") return p.status === "liked" ? supabase.from("client_photos").update({ released: true }).eq("id", p.id) : Promise.resolve({ error: null } as any);
-      return supabase.from("client_photos").update({ released: false }).eq("id", p.id);
-    });
-    await Promise.all(updates);
-    setSelectedPhotos(prev => prev.map(p => {
+    const updatedPhotos = selectedClient.photos.map((p: any) => {
       if (type === "all") return { ...p, released: true };
-      if (type === "liked") return p.status === "liked" ? { ...p, released: true } : p;
+      if (type === "liked") return { ...p, released: p.status === "liked" };
       return { ...p, released: false };
-    }));
-    toast.success("Atualizado!");
+    });
+    const updatedClient = { ...selectedClient, photos: updatedPhotos };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success("Atualizado!");
+    } catch { toast.error("Erro"); }
   };
 
   const handleDeletePhoto = async (photoId: string) => {
-    if (!confirm("Excluir esta foto?")) return;
-    const photo = selectedPhotos.find(p => p.id === photoId);
+    if (!selectedClient || !confirm("Excluir foto?")) return;
+    const photo = selectedClient.photos.find((p: any) => p.id === photoId);
     if (photo) {
       const origPath = photo.original_url.split("/storage/v1/object/public/media/")[1];
       const thumbPath = photo.thumbnail_url.split("/storage/v1/object/public/media/")[1];
       if (origPath) await supabase.storage.from("media").remove([origPath]);
       if (thumbPath) await supabase.storage.from("media").remove([thumbPath]);
     }
-    await supabase.from("client_photos").delete().eq("id", photoId);
-    setSelectedPhotos(prev => prev.filter(p => p.id !== photoId));
-    toast.success("Foto excluída.");
+    const updatedPhotos = selectedClient.photos.filter((p: any) => p.id !== photoId);
+    const updatedClient = { ...selectedClient, photos: updatedPhotos };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success("Foto excluída.");
+    } catch { toast.error("Erro"); }
   };
 
   const filtered = clients.filter((c: any) => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -189,56 +216,53 @@ const AdminClientsTab = () => {
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground font-body">
-        <Loader2 className="animate-spin mb-4" size={32} />
-        <p>Carregando clientes...</p>
+        <Loader2 className="animate-spin mb-4" size={32} /> Carregando...
       </div>
     );
   }
 
-  // ─── LIST VIEW ────────────────────────────────────────────────
+  // ─── LIST ──────────────────────────────────────────────────────
   if (view === "list") {
+    const totalPhotos = clients.reduce((acc: number, c: any) => acc + (c.photos?.length || 0), 0);
     return (
       <div className="space-y-6">
-        {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="bg-card/50 border-border"><CardHeader className="pb-2">
-            <CardDescription className="font-body text-xs text-muted-foreground uppercase">Clientes</CardDescription>
+            <CardDescription className="font-body text-xs uppercase">Clientes</CardDescription>
             <CardTitle className="font-display text-3xl text-gradient-gold flex items-center gap-2"><Users size={24} /> {clients.length}</CardTitle>
           </CardHeader></Card>
           <Card className="bg-card/50 border-border"><CardHeader className="pb-2">
-            <CardDescription className="font-body text-xs text-muted-foreground uppercase">Total Fotos</CardDescription>
-            <CardTitle className="font-display text-3xl text-gradient-gold">{selectedPhotos.length}</CardTitle>
+            <CardDescription className="font-body text-xs uppercase">Fotos</CardDescription>
+            <CardTitle className="font-display text-3xl text-gradient-gold">{totalPhotos}</CardTitle>
           </CardHeader></Card>
           <Card className="bg-card/50 border-border"><CardHeader className="pb-2">
-            <CardDescription className="font-body text-xs text-muted-foreground uppercase">Pendentes</CardDescription>
-            <CardTitle className="font-display text-3xl text-rose-500">{clients.filter((c: any) => !c.photos?.length).length}</CardTitle>
+            <CardDescription className="font-body text-xs uppercase">Pendentes</CardDescription>
+            <CardTitle className="font-display text-3xl text-rose-500">{clients.filter((c: any) => c.photos?.some((p: any) => p.status === "pending")).length}</CardTitle>
           </CardHeader></Card>
         </div>
 
-        {/* Search + Create */}
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
           <div className="relative w-full sm:max-w-md">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Pesquisar cliente..." className="pl-9 bg-card border-border font-body" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <Input placeholder="Pesquisar..." className="pl-9 bg-card border-border" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
-          <Button onClick={() => setShowCreateForm(!showCreateForm)} className="w-full sm:w-auto bg-gradient-gold text-primary-foreground font-body font-semibold flex items-center gap-2">
+          <Button onClick={() => setShowCreateForm(!showCreateForm)} className="bg-gradient-gold text-primary-foreground font-semibold flex items-center gap-2">
             <Plus size={16} /> Novo Cliente
           </Button>
         </div>
 
-        {/* Create Form */}
         {showCreateForm && (
           <Card className="bg-card border-border shadow-lg max-w-lg">
             <CardHeader><CardTitle className="font-display text-lg">Novo Cliente</CardTitle></CardHeader>
             <CardContent>
               <form onSubmit={handleCreateClient} className="space-y-4">
-                <Input placeholder="Nome do cliente" value={newName} onChange={(e) => setNewName(e.target.value)} required />
+                <Input placeholder="Nome" value={newName} onChange={(e) => setNewName(e.target.value)} required />
                 <div className="flex gap-2">
                   <Input placeholder="Senha" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
-                  <Button type="button" variant="outline" onClick={() => setNewPassword(Math.random().toString(36).substring(2, 10))} className="text-xs">Gerar</Button>
+                  <Button type="button" variant="outline" onClick={() => setNewPassword(Math.random().toString(36).substring(2, 10))}>Gerar</Button>
                 </div>
-                <Input placeholder="Texto da marca d'água" value={newWatermark} onChange={(e) => setNewWatermark(e.target.value)} />
-                <Input type="number" min="0" placeholder="Limite de fotos (0 = ilimitado)" value={newMaxPhotos} onChange={(e) => setNewMaxPhotos(e.target.value)} />
+                <Input placeholder="Marca d'água" value={newWatermark} onChange={(e) => setNewWatermark(e.target.value)} />
+                <Input type="number" min="0" placeholder="Limite (0=ilimitado)" value={newMaxPhotos} onChange={(e) => setNewMaxPhotos(e.target.value)} />
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-gradient-gold">Salvar</Button>
@@ -248,44 +272,49 @@ const AdminClientsTab = () => {
           </Card>
         )}
 
-        {/* Client List */}
         <div className="space-y-4">
           {filtered.length === 0 ? (
-            <p className="text-muted-foreground font-body text-sm py-4">Nenhum cliente encontrado.</p>
-          ) : filtered.map((client: any) => (
-            <Card key={client.id} className="bg-card/40 border-border hover:border-primary/40 transition-colors">
-              <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-display text-lg font-semibold">{client.name}</h3>
-                    <Badge variant="outline" className="text-[10px] border-primary/20 text-primary">{client.max_photos ? `Max ${client.max_photos}` : "Ilimitado"}</Badge>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground font-body">
-                    <span className="flex items-center gap-1">
-                      <Key size={13} />
+            <p className="text-muted-foreground py-4">Nenhum cliente.</p>
+          ) : filtered.map((client: any) => {
+            const photosCount = client.photos?.length || 0;
+            const likedCount = client.photos?.filter((p: any) => p.status === "liked").length || 0;
+            const releasedCount = client.photos?.filter((p: any) => p.released).length || 0;
+            return (
+              <Card key={client.id} className="bg-card/40 border-border hover:border-primary/40 transition-colors">
+                <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-display text-lg font-semibold">{client.name}</h3>
+                      <Badge variant="outline" className="text-[10px]">{photosCount} foto{photosCount !== 1 && "s"}</Badge>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="font-mono bg-secondary px-1.5 py-0.5 rounded text-[11px] flex items-center gap-1">
                         {showPassword[client.id] ? client.password : "••••••••"}
                         <button onClick={() => setShowPassword(p => ({ ...p, [client.id]: !p[client.id] }))}>
                           {showPassword[client.id] ? <EyeOff size={11} /> : <Eye size={11} />}
                         </button>
                       </span>
-                    </span>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Badge className="bg-rose-950/20 text-rose-500 border-rose-900/30 text-[10px]"><Heart size={10} className="fill-rose-500" /> {likedCount}</Badge>
+                      <Badge className="bg-green-950/20 text-green-400 border-green-900/30 text-[10px]"><Unlock size={10} /> {releasedCount}</Badge>
+                    </div>
                   </div>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => copyLink(client.id)} className="text-xs flex items-center gap-1.5"><LinkIcon size={13} /> Copiar Link</Button>
-                  <Button variant="outline" size="sm" onClick={() => loadClientPhotos(client)} className="text-xs bg-secondary flex items-center gap-1.5">Gerenciar</Button>
-                  <Button variant="ghost" size="icon" onClick={() => handleDeleteClient(client.id, client.name)} className="text-destructive hover:bg-destructive/10"><Trash2 size={16} /></Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={() => copyLink(client.id)} className="text-xs flex items-center gap-1.5"><LinkIcon size={13} /> Link</Button>
+                    <Button variant="outline" size="sm" onClick={() => handleSelectClient(client)} className="text-xs bg-secondary">Gerenciar</Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeleteClient(client.id, client.name)} className="text-destructive"><Trash2 size={16} /></Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     );
   }
 
-  // ─── EDIT VIEW ────────────────────────────────────────────────
+  // ─── EDIT ──────────────────────────────────────────────────────
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between border-b border-border pb-4">
@@ -293,7 +322,7 @@ const AdminClientsTab = () => {
           <Button variant="ghost" size="icon" onClick={() => setView("list")} className="text-muted-foreground"><ChevronLeft size={20} /></Button>
           <div>
             <h2 className="font-display text-2xl font-semibold">{selectedClient?.name}</h2>
-            <p className="text-xs text-muted-foreground font-body">Gerenciando galeria</p>
+            <p className="text-xs text-muted-foreground">Gerenciando galeria</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -302,7 +331,6 @@ const AdminClientsTab = () => {
         </div>
       </div>
 
-      {/* Settings */}
       <Card className="bg-card border-border">
         <CardHeader className="py-4"><CardTitle className="font-display text-base">Configurações</CardTitle></CardHeader>
         <CardContent className="space-y-4 pb-5">
@@ -310,44 +338,42 @@ const AdminClientsTab = () => {
             <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" />
             <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Senha" />
             <Input value={editWatermark} onChange={(e) => setEditWatermark(e.target.value)} placeholder="Marca d'água" />
-            <Input type="number" min="0" value={editMaxPhotos} onChange={(e) => setEditMaxPhotos(e.target.value)} placeholder="Limite (0=ilimitado)" />
+            <Input type="number" min="0" value={editMaxPhotos} onChange={(e) => setEditMaxPhotos(e.target.value)} placeholder="Limite" />
           </div>
-          <div className="flex justify-end"><Button onClick={handleSaveSettings} className="bg-gradient-gold font-body">Salvar</Button></div>
+          <div className="flex justify-end"><Button onClick={handleSaveSettings} className="bg-gradient-gold">Salvar</Button></div>
         </CardContent>
       </Card>
 
-      {/* Upload */}
-      <Card className="bg-card/50 border-dashed border-2 border-border p-6 text-center hover:border-primary/40 transition-colors">
+      <Card className="bg-card/50 border-dashed border-2 border-border p-6 text-center hover:border-primary/40">
         <div className="flex flex-col items-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary"><Upload size={24} /></div>
-          <p className="font-body text-sm font-semibold">Carregar fotos</p>
-          <p className="font-body text-xs text-muted-foreground">JPG, PNG, WebP. Máx 10MB. Marca d'água automática.</p>
-          <label className="cursor-pointer bg-gradient-gold text-primary-foreground font-body font-semibold text-sm px-4 py-2 rounded shadow hover:opacity-90">
-            {uploading ? "Enviando..." : "Selecionar Arquivos"}
+          <Upload size={24} className="text-primary" />
+          <p className="font-semibold">Carregar fotos</p>
+          <p className="text-xs text-muted-foreground">JPG, PNG, WebP. Máx 10MB.</p>
+          <label className="cursor-pointer bg-gradient-gold text-primary-foreground font-semibold text-sm px-4 py-2 rounded shadow hover:opacity-90">
+            {uploading ? "Enviando..." : "Selecionar"}
             <input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
           </label>
           {uploading && <div className="w-full max-w-xs"><Progress value={uploadProgress} className="h-1.5" /><p className="text-xs text-muted-foreground mt-1">{uploadProgress}%</p></div>}
         </div>
       </Card>
 
-      {/* Photos */}
       <div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-          <h3 className="font-display text-lg font-semibold">Fotos ({selectedPhotos.length})</h3>
-          {selectedPhotos.length > 0 && (
+          <h3 className="font-display text-lg font-semibold">Fotos ({selectedClient?.photos?.length || 0})</h3>
+          {selectedClient?.photos?.length > 0 && (
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={() => handleBulkRelease("liked")} className="text-xs text-rose-400 border-rose-900/30 bg-rose-950/10">Liberar Curtidas</Button>
-              <Button variant="outline" size="sm" onClick={() => handleBulkRelease("all")} className="text-xs text-green-400 border-green-900/30 bg-green-950/10">Liberar Todas</Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkRelease("liked")} className="text-xs text-rose-400 border-rose-900/30">Liberar Curtidas</Button>
+              <Button variant="outline" size="sm" onClick={() => handleBulkRelease("all")} className="text-xs text-green-400 border-green-900/30">Liberar Todas</Button>
               <Button variant="outline" size="sm" onClick={() => handleBulkRelease("block")} className="text-xs">Bloquear Todas</Button>
             </div>
           )}
         </div>
 
-        {selectedPhotos.length === 0 ? (
+        {!selectedClient?.photos?.length ? (
           <div className="text-center py-12 text-muted-foreground bg-card/20 border border-border rounded-lg">Nenhuma foto. Faça upload acima.</div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {selectedPhotos.map((photo) => (
+            {selectedClient.photos.map((photo: any) => (
               <Card key={photo.id} className="bg-card border-border overflow-hidden flex flex-col">
                 <div className="relative aspect-square bg-muted overflow-hidden">
                   <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
@@ -368,7 +394,7 @@ const AdminClientsTab = () => {
                       <Switch checked={photo.released} onCheckedChange={() => togglePhotoRelease(photo.id, photo.released)} className="h-4 w-7 data-[state=checked]:bg-green-500 scale-75 origin-left" />
                       <span className="text-[10px] text-muted-foreground">Liberar</span>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeletePhoto(photo.id)} className="h-7 w-7 text-destructive hover:bg-destructive/10"><Trash2 size={13} /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeletePhoto(photo.id)} className="h-7 w-7 text-destructive"><Trash2 size={13} /></Button>
                   </div>
                 </CardContent>
               </Card>

@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useClientPhotos } from "@/hooks/useSiteContent";
+import { useClients, useClientPhotos, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
 import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,25 +8,26 @@ import { Button } from "@/components/ui/button";
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
+  const { data: clients = [], isLoading: loadingClients } = useClients();
   const { data: photos = [], isLoading: loadingPhotos } = useClientPhotos(clientId);
+  const updateClients = useUpdateClients();
 
   const [client, setClient] = useState<any>(null);
-  const [loadingClient, setLoadingClient] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [passwordInput, setPasswordInput] = useState("");
   const [saving, setSaving] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!clientId) return;
-    const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
-    if (sessionAuth === "true") setIsAuthenticated(true);
-
-    supabase.from("clients").select("*").eq("id", clientId).single().then(({ data }) => {
-      setClient(data);
-      setLoadingClient(false);
-    });
-  }, [clientId]);
+    if (clients.length > 0 && clientId) {
+      const found = clients.find((c: any) => c.id === clientId);
+      if (found) {
+        setClient(found);
+        const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
+        if (sessionAuth === "true") setIsAuthenticated(true);
+      }
+    }
+  }, [clients, clientId]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,21 +43,24 @@ const ClientGallery = () => {
 
   const toggleLike = async (photoId: string) => {
     const photo = photos.find((p: any) => p.id === photoId);
-    if (!photo) return;
+    if (!photo || !client) return;
 
     const newStatus = photo.status === "liked" ? "pending" : "liked";
+    const updatedPhotos = client.photos.map((p: any) =>
+      p.id === photoId ? { ...p, status: newStatus } : p
+    );
+    const updatedClients = clients.map((c: any) =>
+      c.id === client.id ? { ...c, photos: updatedPhotos } : c
+    );
+
     setSaving(photoId);
-
-    const { error } = await supabase
-      .from("client_photos")
-      .update({ status: newStatus })
-      .eq("id", photoId);
-
-    setSaving(null);
-
-    if (error) {
-      toast.error("Erro ao salvar. Tente novamente.");
+    try {
+      await updateClients.mutateAsync(updatedClients);
+      setClient({ ...client, photos: updatedPhotos });
+    } catch {
+      toast.error("Erro ao salvar.");
     }
+    setSaving(null);
   };
 
   const downloadPhoto = async (photo: any) => {
@@ -81,11 +84,11 @@ const ClientGallery = () => {
   const sendWhatsApp = () => {
     if (!client) return;
     const liked = photos.filter((p: any) => p.status === "liked");
-    const text = `Olá! Concluí a seleção de fotos. Escolhi ${liked.length} fotos de um total de ${photos.length}.`;
+    const text = `Olá! Concluí a seleção. Escolhi ${liked.length} fotos de ${photos.length} total.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  const isLoading = loadingClient || loadingPhotos;
+  const isLoading = loadingClients || loadingPhotos;
 
   if (isLoading) {
     return (
@@ -101,7 +104,7 @@ const ClientGallery = () => {
       <div className="min-h-screen bg-[#0c0a09] flex flex-col items-center justify-center px-4 text-center">
         <h1 className="font-display text-2xl text-foreground mb-2">Galeria não encontrada</h1>
         <p className="font-body text-muted-foreground mb-6">Link incorreto ou removido.</p>
-        <Button onClick={() => navigate("/")} className="bg-gradient-gold text-primary-foreground font-body">Voltar ao site</Button>
+        <Button onClick={() => navigate("/")} className="bg-gradient-gold text-primary-foreground font-body">Voltar</Button>
       </div>
     );
   }
@@ -115,7 +118,7 @@ const ClientGallery = () => {
           <h1 className="font-display text-2xl tracking-wider text-gradient-gold text-center mb-1">LIU RECORD</h1>
           <p className="font-display text-lg text-foreground text-center mt-4 mb-1">Acesso à Galeria</p>
           <p className="font-body text-xs text-muted-foreground text-center mb-6">
-            Olá, <span className="text-foreground font-medium">{client.name}</span>. Insira a senha para acessar suas fotos.
+            Olá, <span className="text-foreground font-medium">{client.name}</span>. Insira a senha.
           </p>
           <form onSubmit={handleLogin} className="space-y-4">
             <input
@@ -137,7 +140,6 @@ const ClientGallery = () => {
 
   return (
     <div className="min-h-screen bg-[#0c0a09] text-foreground font-body pb-12">
-      {/* HEADER */}
       <header className="border-b border-border bg-card/50 sticky top-0 z-40 backdrop-blur">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -163,13 +165,13 @@ const ClientGallery = () => {
       <main className="container mx-auto px-4 py-8">
         {client.max_photos && (
           <p className="text-xs text-amber-500 font-medium font-body mb-4">
-            Máximo de <strong>{client.max_photos}</strong> foto{client.max_photos !== 1 && "s"} para escolher.
+            Máximo de <strong>{client.max_photos}</strong> foto{client.max_photos !== 1 && "s"}.
           </p>
         )}
 
         {photos.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground border border-border bg-card/10 rounded-lg">
-            Nenhuma foto disponível. Entre em contato com o fotógrafo.
+            Nenhuma foto disponível.
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
-// ─── Site Content (unchanged) ────────────────────────────────────
+// ─── Site Content ────────────────────────────────────────────────
 
 export function useSiteContent(sectionKey: string) {
   return useQuery({
@@ -150,18 +150,23 @@ export function useAdminCheck() {
   });
 }
 
-// ─── Clients (new direct tables) ────────────────────────────────
+// ─── Client Proofing (plain JSON in site_content, no encryption) ─
 
 export function useClients() {
   return useQuery({
     queryKey: ["clients_data"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("clients")
-        .select("*")
-        .order("created_at", { ascending: false });
+        .from("site_content")
+        .select("content")
+        .eq("section_key", "clients")
+        .maybeSingle();
+
       if (error) throw error;
-      return data as any[];
+      if (!data || !data.content) return [];
+
+      const content = data.content as any;
+      return Array.isArray(content) ? content : [];
     },
   });
 }
@@ -172,12 +177,17 @@ export function useClientPhotos(clientId: string | undefined) {
     queryFn: async () => {
       if (!clientId) return [];
       const { data, error } = await supabase
-        .from("client_photos")
-        .select("*")
-        .eq("client_id", clientId)
-        .order("sort_order");
+        .from("site_content")
+        .select("content")
+        .eq("section_key", "clients")
+        .maybeSingle();
+
       if (error) throw error;
-      return data as any[];
+      if (!data || !data.content) return [];
+
+      const clients = Array.isArray(data.content) ? data.content : [];
+      const client = clients.find((c: any) => c.id === clientId);
+      return client?.photos || [];
     },
     enabled: !!clientId,
   });
@@ -187,7 +197,30 @@ export function useUpdateClients() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (clients: any[]) => {
-      // Legacy: no longer used, kept for compatibility
+      const { data, error: selectError } = await supabase
+        .from("site_content")
+        .select("id")
+        .eq("section_key", "clients")
+        .maybeSingle();
+
+      if (selectError) throw selectError;
+
+      if (data?.id) {
+        const { data: updatedRows, error } = await supabase
+          .from("site_content")
+          .update({ content: clients })
+          .eq("section_key", "clients")
+          .select("id");
+        if (error) throw error;
+        if (!updatedRows || updatedRows.length === 0) {
+          throw new Error("RLS_BLOCKED");
+        }
+      } else {
+        const { error } = await supabase
+          .from("site_content")
+          .insert({ section_key: "clients", content: clients });
+        if (error) throw error;
+      }
     },
     onSuccess: async () => {
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
