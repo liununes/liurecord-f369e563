@@ -16,6 +16,7 @@ const ClientGallery = () => {
   const [passwordInput, setPasswordInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const photos = client?.photos || [];
 
@@ -65,20 +66,54 @@ const ClientGallery = () => {
   };
 
   const downloadPhoto = async (photo: any) => {
+    if (!photo.original_url) {
+      toast.error("URL da foto não disponível.");
+      return;
+    }
+
+    setDownloadingId(photo.id);
+
     try {
       const res = await fetch(photo.original_url);
+      if (!res.ok) throw new Error(`Falha no servidor: ${res.status}`);
       const blob = await res.blob();
+      if (blob.size === 0) throw new Error("Arquivo vazio");
+
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = photo.filename || "foto.jpg";
+      link.style.display = "none";
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 3000);
+
       toast.success("Download iniciado.");
-    } catch {
-      window.open(photo.original_url, "_blank");
+    } catch (err: any) {
+      console.error("Download via fetch falhou:", err);
+
+      // Fallback 1: link direto
+      try {
+        const link = document.createElement("a");
+        link.href = photo.original_url;
+        link.download = photo.filename || "foto.jpg";
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Download iniciado.");
+      } catch {
+        // Fallback 2: abrir em nova aba
+        window.open(photo.original_url, "_blank");
+        toast.info("Salve a imagem manualmente (clique direito > Salvar como).");
+      }
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -209,8 +244,18 @@ const ClientGallery = () => {
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
                     </button>
                     {photo.released ? (
-                      <Button size="sm" onClick={() => downloadPhoto(photo)} className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2">
-                        <Download size={11} /> Baixar
+                      <Button
+                        size="sm"
+                        onClick={() => downloadPhoto(photo)}
+                        disabled={downloadingId === photo.id}
+                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
+                      >
+                        {downloadingId === photo.id ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Download size={11} />
+                        )}{" "}
+                        {downloadingId === photo.id ? "Baixando..." : "Baixar"}
                       </Button>
                     ) : (
                       <span className="text-[10px] text-muted-foreground">Aguardando</span>
@@ -259,8 +304,17 @@ const ClientGallery = () => {
               {photos[lightboxIndex].status === "liked" ? "Escolhida" : "Escolher"}
             </button>
             {photos[lightboxIndex].released && (
-              <Button onClick={() => downloadPhoto(photos[lightboxIndex])} className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full">
-                <Download size={14} /> Baixar Original
+              <Button
+                onClick={() => downloadPhoto(photos[lightboxIndex])}
+                disabled={downloadingId === photos[lightboxIndex].id}
+                className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
+              >
+                {downloadingId === photos[lightboxIndex].id ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}{" "}
+                {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
               </Button>
             )}
           </div>
