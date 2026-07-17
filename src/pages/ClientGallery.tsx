@@ -52,7 +52,10 @@ const ClientGallery = () => {
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   const escapeHtml = (value: string) =>
-    value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char] || char));
+    value.replace(/[&<>"]/g, (char) => {
+      const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+      return entities[char] || char;
+    });
 
   const openPreparingTab = (fileName: string) => {
     if (!isMobileBrowser()) return null;
