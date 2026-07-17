@@ -405,11 +405,7 @@ const ClientGallery = () => {
           </div>
 
           <div className="p-6 bg-gradient-to-t from-black/85 to-transparent flex items-center justify-center gap-4" onClick={(e) => e.stopPropagation()}>
-            {photos[lightboxIndex].downloaded ? (
-              <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-900/50 border border-green-700 text-green-400 font-body text-xs">
-                <CheckCircle2 size={14} /> Baixada
-              </span>
-            ) : hasReachedLimit && !photos[lightboxIndex].released && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
+            {hasReachedLimit && !photos[lightboxIndex].downloaded && !photos[lightboxIndex].released && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
               <Button
                 onClick={() => toggleRequest(photos[lightboxIndex].id)}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full"
@@ -431,7 +427,11 @@ const ClientGallery = () => {
                 ) : (
                   <Download size={14} />
                 )}{" "}
-                {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
+                {downloadingId === photos[lightboxIndex].id
+                  ? "Baixando..."
+                  : photos[lightboxIndex].downloaded
+                    ? "Baixar novamente"
+                    : "Baixar Original"}
               </Button>
             )}
           </div>
