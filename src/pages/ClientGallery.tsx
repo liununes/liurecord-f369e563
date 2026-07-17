@@ -243,23 +243,19 @@ const ClientGallery = () => {
                     >
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
                     </button>
-                    {photo.released ? (
-                      <Button
-                        size="sm"
-                        onClick={() => downloadPhoto(photo)}
-                        disabled={downloadingId === photo.id}
-                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
-                      >
-                        {downloadingId === photo.id ? (
-                          <Loader2 size={11} className="animate-spin" />
-                        ) : (
-                          <Download size={11} />
-                        )}{" "}
-                        {downloadingId === photo.id ? "Baixando..." : "Baixar"}
-                      </Button>
-                    ) : (
-                      <span className="text-[10px] text-muted-foreground">Aguardando</span>
-                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => downloadPhoto(photo)}
+                      disabled={downloadingId === photo.id}
+                      className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
+                    >
+                      {downloadingId === photo.id ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <Download size={11} />
+                      )}{" "}
+                      {downloadingId === photo.id ? "Baixando..." : "Baixar"}
+                    </Button>
                   </div>
                 </div>
               );
@@ -303,20 +299,18 @@ const ClientGallery = () => {
               <Heart size={14} className={photos[lightboxIndex].status === "liked" ? "fill-white" : ""} />
               {photos[lightboxIndex].status === "liked" ? "Escolhida" : "Escolher"}
             </button>
-            {photos[lightboxIndex].released && (
-              <Button
-                onClick={() => downloadPhoto(photos[lightboxIndex])}
-                disabled={downloadingId === photos[lightboxIndex].id}
-                className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
-              >
-                {downloadingId === photos[lightboxIndex].id ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Download size={14} />
-                )}{" "}
-                {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
-              </Button>
-            )}
+            <Button
+              onClick={() => downloadPhoto(photos[lightboxIndex])}
+              disabled={downloadingId === photos[lightboxIndex].id}
+              className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
+            >
+              {downloadingId === photos[lightboxIndex].id ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Download size={14} />
+              )}{" "}
+              {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
+            </Button>
           </div>
         </div>
       )}
