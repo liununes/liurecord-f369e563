@@ -45,12 +45,10 @@ const AdminOverviewTab = ({ clients, media, setActiveTab }: AdminOverviewTabProp
   const totalMedia = media?.length || 0;
   
   let totalPhotos = 0;
-  let approvedPhotos = 0;
-  
+
   clients?.forEach((client) => {
     if (client.photos) {
       totalPhotos += client.photos.length;
-      approvedPhotos += client.photos.filter((p: any) => p.status === "liked").length;
     }
   });
 
@@ -98,7 +96,6 @@ const AdminOverviewTab = ({ clients, media, setActiveTab }: AdminOverviewTabProp
           </div>
           <div className="mt-4 pt-4 border-t border-border/50 flex justify-between text-xs text-muted-foreground font-body">
             <span>{totalPhotos} fotos nos cofres</span>
-            <span className="text-primary">{approvedPhotos} curtidas</span>
           </div>
         </div>
 
@@ -217,7 +214,7 @@ const AdminOverviewTab = ({ clients, media, setActiveTab }: AdminOverviewTabProp
             <h3 className="font-display text-xl tracking-wider text-foreground">Dica do Painel</h3>
             <div className="space-y-2 font-body text-xs text-muted-foreground leading-relaxed">
               <p>
-                <strong>Prova de Clientes:</strong> Ao criar um cliente, defina um limite de fotos. Ele poderá curtir e aprovar as fotos de prova diretamente da área exclusiva.
+                <strong>Prova de Clientes:</strong> Ao criar um cliente, defina um limite de fotos. Ele poderá baixar as fotos de prova diretamente da área exclusiva.
               </p>
               <p>
                 <strong>Tema:</strong> A aba de Cores e Temas permite alterar as variáveis HSL das cores principais e secundárias do site de forma prática.

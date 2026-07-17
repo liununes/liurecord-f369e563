@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
-import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
+import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ClientGallery = () => {
@@ -47,28 +47,6 @@ const ClientGallery = () => {
     } else {
       toast.error("Senha incorreta.");
     }
-  };
-
-  const toggleLike = async (photoId: string) => {
-    if (!client || saving) return;
-
-    const newPhotos = client.photos.map((p: any) =>
-      p.id === photoId ? { ...p, status: p.status === "liked" ? "pending" : "liked" } : p
-    );
-    const updatedClient = { ...client, photos: newPhotos };
-    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
-
-    setClient(updatedClient);
-    setSaving(true);
-
-    try {
-      await updateClients.mutateAsync(updatedClients);
-      toast.success("Escolha salva!");
-    } catch {
-      setClient(client);
-      toast.error("Erro ao salvar. Tente novamente.");
-    }
-    setSaving(false);
   };
 
   const markDownloaded = async (photo: any) => {
@@ -183,8 +161,7 @@ const ClientGallery = () => {
   };
 
   const sendWhatsApp = () => {
-    const liked = photos.filter((p: any) => p.status === "liked");
-    const text = `Olá! Concluí a seleção. Escolhi ${liked.length} fotos de ${photos.length} total.`;
+    const text = `Olá! Concluí a seleção. Tenho ${photos.length} fotos na galeria.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
@@ -235,8 +212,6 @@ const ClientGallery = () => {
     );
   }
 
-  const likedCount = photos.filter((p: any) => p.status === "liked").length;
-
   return (
     <div className="min-h-screen bg-[#0c0a09] text-foreground font-body pb-12">
       <header className="border-b border-border bg-card/50 sticky top-0 z-40 backdrop-blur">
@@ -251,9 +226,6 @@ const ClientGallery = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground font-body">
-              <Heart size={12} className="inline text-rose-500" /> {likedCount} escolhida{likedCount !== 1 && "s"}
-            </span>
             <Button onClick={sendWhatsApp} className="bg-green-600 hover:bg-green-700 text-white font-body text-xs flex items-center gap-1.5">
               Enviar Seleção
             </Button>
@@ -301,7 +273,6 @@ const ClientGallery = () => {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {photos.map((photo: any, index: number) => {
-              const isLiked = photo.status === "liked";
               const isDownloaded = photo.downloaded;
               const isRequested = requestingIds.has(photo.id);
               const isPending = pendingRequests.includes(photo.id);
@@ -309,17 +280,10 @@ const ClientGallery = () => {
               return (
                 <div
                   key={photo.id}
-                  className={`bg-card border overflow-hidden rounded-lg flex flex-col transition-all duration-300 ${
-                    isLiked ? "border-rose-500/50 shadow-[0_0_15px_rgba(244,63,94,0.1)]" : "border-border hover:border-primary/30"
-                  }`}
+                  className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30"
                 >
                   <div className="aspect-square bg-muted relative overflow-hidden cursor-pointer" onClick={() => setLightboxIndex(index)}>
                     <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
-                    {isLiked && (
-                      <div className="absolute top-2 left-2 bg-rose-600 text-white rounded px-1.5 py-0.5 text-[9px] font-body flex items-center gap-0.5">
-                        <Heart size={8} className="fill-white" /> Escolhida
-                      </div>
-                    )}
                     {isDownloaded && (
                       <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow">
                         <CheckCircle2 size={10} />
@@ -336,18 +300,7 @@ const ClientGallery = () => {
                       </div>
                     )}
                   </div>
-                  <div className="p-2 flex items-center justify-between bg-card/80 border-t border-border/50">
-                    <button
-                      onClick={() => toggleLike(photo.id)}
-                      disabled={saving}
-                      className={`p-1.5 rounded-full border transition-all ${
-                        isLiked
-                          ? "bg-rose-600 border-rose-600 text-white"
-                          : "bg-secondary border-border text-muted-foreground hover:text-rose-500"
-                      }`}
-                    >
-                      {saving ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
-                    </button>
+                  <div className="p-2 flex items-center justify-end bg-card/80 border-t border-border/50">
                     {isDownloaded ? (
                       <span className="text-[10px] text-green-500 flex items-center gap-1">
                         <CheckCircle2 size={10} /> Baixada
@@ -413,17 +366,6 @@ const ClientGallery = () => {
           </div>
 
           <div className="p-6 bg-gradient-to-t from-black/85 to-transparent flex items-center justify-center gap-4" onClick={(e) => e.stopPropagation()}>
-            <button
-              onClick={() => toggleLike(photos[lightboxIndex].id)}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-body font-semibold text-xs transition-all ${
-                photos[lightboxIndex].status === "liked"
-                  ? "bg-rose-600 text-white"
-                  : "bg-zinc-900 border border-zinc-800 text-zinc-300 hover:text-rose-500"
-              }`}
-            >
-              <Heart size={14} className={photos[lightboxIndex].status === "liked" ? "fill-white" : ""} />
-              {photos[lightboxIndex].status === "liked" ? "Escolhida" : "Escolher"}
-            </button>
             {photos[lightboxIndex].downloaded ? (
               <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-900/50 border border-green-700 text-green-400 font-body text-xs">
                 <CheckCircle2 size={14} /> Baixada
