@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2, Check, AlertTriangle } from "lucide-react";
 
+const db = supabase as any;
+
 const MIGRATE_SQL = `
 CREATE TABLE IF NOT EXISTS public.clients (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -56,20 +58,20 @@ const Migrar = () => {
       // 1. Tentar criar tabela via RPC (Supabase SQL RPC)
       addLog("Verificando tabelas...");
 
-      const { error: rpcErr } = await supabase.rpc("exec_sql" as any, { query: MIGRATE_SQL }).single();
+      const { error: rpcErr } = await db.rpc("exec_sql", { query: MIGRATE_SQL }).single();
 
       if (rpcErr) {
         // Fallback: tentar criar via insert direto pra ver se a tabela existe
         addLog("Tentando via API...");
-        const { error: testErr } = await supabase.from("clients").select("id").limit(1);
+        const { error: testErr } = await db.from("clients").select("id").limit(1);
 
         if (testErr && testErr.message.includes("Could not find the table")) {
-          addLog("Tabela não encontrada. Criando via Supabase Dashboard...");
+          addLog("Tabela não encontrada. Crie as tabelas pelo backend.");
 
           // Copiar SQL para clipboard
           await navigator.clipboard.writeText(MIGRATE_SQL);
           addLog("SQL copiado para a área de transferência!");
-          addLog("Abra o Supabase Dashboard → SQL Editor → Cole e rode o SQL.");
+          addLog("Abra o backend → SQL Editor → Cole e rode o SQL.");
           addLog("Depois clique 'Rodar Migração' novamente.");
           setStatus("error");
           return;
@@ -109,7 +111,7 @@ const Migrar = () => {
         addLog(`Migrando: ${oldClient.name}...`);
 
         // Upsert cliente
-        const { data: existingClient } = await supabase
+        const { data: existingClient } = await db
           .from("clients")
           .select("id")
           .eq("id", oldClient.id)
@@ -121,7 +123,7 @@ const Migrar = () => {
           addLog(`  Cliente já existe, pulando...`);
           clientId = existingClient.id;
         } else {
-          const { data: newClient, error: clientErr } = await supabase
+          const { data: newClient, error: clientErr } = await db
             .from("clients")
             .insert({
               id: oldClient.id,
@@ -144,7 +146,7 @@ const Migrar = () => {
 
         // Migrar fotos
         if (oldClient.photos && oldClient.photos.length > 0) {
-          const { count } = await supabase
+          const { count } = await db
             .from("client_photos")
             .select("id", { count: "exact", head: true })
             .eq("client_id", clientId);
@@ -164,7 +166,7 @@ const Migrar = () => {
               created_at: oldClient.created_at || new Date().toISOString(),
             }));
 
-            const { error: photosErr } = await supabase.from("client_photos").insert(photoRows);
+            const { error: photosErr } = await db.from("client_photos").insert(photoRows);
             if (photosErr) {
               addLog(`  Erro fotos: ${photosErr.message}`);
             } else {
