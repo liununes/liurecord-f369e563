@@ -120,17 +120,54 @@ const AdminClientsTab = () => {
     setUploading(true);
     setUploadProgress(0);
 
-    const total = files.length;
+    const existingNames = new Set((selectedClient.photos || []).map((p: any) => p.filename?.toLowerCase()));
+    const duplicates: string[] = [];
+    const validFiles: File[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (!ALLOWED.includes(file.type) || file.size > MAX_SIZE) {
+        toast.error(`"${file.name}" inválido.`);
+        continue;
+      }
+      if (existingNames.has(file.name.toLowerCase())) {
+        duplicates.push(file.name);
+      }
+      validFiles.push(file);
+    }
+
+    if (duplicates.length > 0) {
+      const proceed = window.confirm(
+        `${duplicates.length} foto${duplicates.length !== 1 ? "s" : ""} com nome repetido:\n\n${duplicates.join("\n")}\n\nDeseja enviar mesmo assim?`
+      );
+      if (!proceed) {
+        if (validFiles.length === 0) {
+          setUploading(false);
+          setUploadProgress(0);
+          e.target.value = "";
+          return;
+        }
+      } else {
+        const dupSet = new Set(duplicates.map((d) => d.toLowerCase()));
+        const filtered = validFiles.filter((f) => !dupSet.has(f.name.toLowerCase()));
+        validFiles.length = 0;
+        validFiles.push(...filtered);
+        if (validFiles.length === 0) {
+          toast.info("Nenhuma nova foto para enviar.");
+          setUploading(false);
+          setUploadProgress(0);
+          e.target.value = "";
+          return;
+        }
+      }
+    }
+
+    const total = validFiles.length;
     let done = 0;
     const updatedPhotos = [...(selectedClient.photos || [])];
 
     for (let i = 0; i < total; i++) {
-      const file = files[i];
-      if (!ALLOWED.includes(file.type) || file.size > MAX_SIZE) {
-        toast.error(`"${file.name}" inválido.`);
-        done++; setUploadProgress(Math.round((done / total) * 100));
-        continue;
-      }
+      const file = validFiles[i];
       try {
         const thumb = await createWatermarkedThumbnail(file, editWatermark || "LIU RECORD", 900, 900);
         const ts = Date.now();
@@ -218,6 +255,25 @@ const AdminClientsTab = () => {
       setSelectedClient(updatedClient);
       toast.success("Foto excluída.");
     } catch { toast.error("Erro"); }
+  };
+
+  const handleDeleteAllPhotos = async () => {
+    if (!selectedClient || !selectedClient.photos?.length) return;
+    if (!confirm(`Excluir TODAS as ${selectedClient.photos.length} fotos? Esta ação não pode ser desfeita.`)) return;
+
+    for (const photo of selectedClient.photos) {
+      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
+      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
+      if (origPath) await supabase.storage.from("media").remove([origPath]);
+      if (thumbPath) await supabase.storage.from("media").remove([thumbPath]);
+    }
+
+    const updatedClient = { ...selectedClient, photos: [] };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success("Todas as fotos foram excluídas.");
+    } catch { toast.error("Erro ao excluir fotos."); }
   };
 
   const handleApproveRequest = async (photoId: string) => {
@@ -498,6 +554,7 @@ const AdminClientsTab = () => {
               <Button variant="outline" size="sm" onClick={() => handleBulkRelease("liked")} className="text-xs text-rose-400 border-rose-900/30">Liberar Curtidas</Button>
               <Button variant="outline" size="sm" onClick={() => handleBulkRelease("all")} className="text-xs text-green-400 border-green-900/30">Liberar Todas</Button>
               <Button variant="outline" size="sm" onClick={() => handleBulkRelease("block")} className="text-xs">Bloquear Todas</Button>
+              <Button variant="outline" size="sm" onClick={handleDeleteAllPhotos} className="text-xs text-red-400 border-red-900/30">Deletar Todas</Button>
             </div>
           )}
         </div>
