@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { createWatermarkedThumbnail } from "@/lib/watermark";
@@ -31,6 +31,15 @@ const AdminClientsTab = () => {
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+
+  useEffect(() => {
+    if (selectedClient && view === "edit") {
+      const updated = clients.find((c: any) => c.id === selectedClient.id);
+      if (updated) {
+        setSelectedClient(updated);
+      }
+    }
+  }, [clients]);
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
