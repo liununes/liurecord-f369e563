@@ -531,7 +531,7 @@ const AdminClientsTab = () => {
         <div className="flex flex-col items-center space-y-3">
           <Upload size={24} className="text-primary" />
           <p className="font-semibold">Carregar fotos</p>
-          <p className="text-xs text-muted-foreground">JPG, PNG, WebP. Máx 10MB.</p>
+          <p className="text-xs text-muted-foreground">JPG, PNG, WebP. Máx 50MB.</p>
           <label className="cursor-pointer bg-gradient-gold text-primary-foreground font-semibold text-sm px-4 py-2 rounded shadow hover:opacity-90">
             {uploading ? "Enviando..." : "Selecionar"}
             <input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
