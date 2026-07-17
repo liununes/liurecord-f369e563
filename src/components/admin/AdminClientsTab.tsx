@@ -122,7 +122,7 @@ const AdminClientsTab = () => {
 
     const existingNames = new Set((selectedClient.photos || []).map((p: any) => p.filename?.toLowerCase()));
     const duplicates: string[] = [];
-    const validFiles: File[] = [];
+    const allValid: File[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -130,29 +130,22 @@ const AdminClientsTab = () => {
         toast.error(`"${file.name}" inválido.`);
         continue;
       }
+      allValid.push(file);
       if (existingNames.has(file.name.toLowerCase())) {
         duplicates.push(file.name);
       }
-      validFiles.push(file);
     }
 
+    let filesToUpload = allValid;
+
     if (duplicates.length > 0) {
-      const proceed = window.confirm(
-        `${duplicates.length} foto${duplicates.length !== 1 ? "s" : ""} com nome repetido:\n\n${duplicates.join("\n")}\n\nDeseja enviar mesmo assim?`
+      const sendAll = window.confirm(
+        `${duplicates.length} foto${duplicates.length !== 1 ? "s" : ""} com nome repetido:\n\n${duplicates.join("\n")}\n\nDeseja enviar mesmo assim?\n\nClique OK para enviar todas.\nClique Cancelar para enviar apenas as novas.`
       );
-      if (!proceed) {
-        if (validFiles.length === 0) {
-          setUploading(false);
-          setUploadProgress(0);
-          e.target.value = "";
-          return;
-        }
-      } else {
+      if (!sendAll) {
         const dupSet = new Set(duplicates.map((d) => d.toLowerCase()));
-        const filtered = validFiles.filter((f) => !dupSet.has(f.name.toLowerCase()));
-        validFiles.length = 0;
-        validFiles.push(...filtered);
-        if (validFiles.length === 0) {
+        filesToUpload = allValid.filter((f) => !dupSet.has(f.name.toLowerCase()));
+        if (filesToUpload.length === 0) {
           toast.info("Nenhuma nova foto para enviar.");
           setUploading(false);
           setUploadProgress(0);
@@ -162,12 +155,12 @@ const AdminClientsTab = () => {
       }
     }
 
-    const total = validFiles.length;
+    const total = filesToUpload.length;
     let done = 0;
     const updatedPhotos = [...(selectedClient.photos || [])];
 
     for (let i = 0; i < total; i++) {
-      const file = validFiles[i];
+      const file = filesToUpload[i];
       try {
         const thumb = await createWatermarkedThumbnail(file, editWatermark || "LIU RECORD", 900, 900);
         const ts = Date.now();
@@ -209,6 +202,7 @@ const AdminClientsTab = () => {
       toast.error("Erro ao salvar: " + err.message);
     }
     setUploading(false); setUploadProgress(0);
+    e.target.value = "";
   };
 
   const togglePhotoRelease = async (photoId: string, current: boolean) => {
@@ -243,10 +237,10 @@ const AdminClientsTab = () => {
     if (!selectedClient || !confirm("Excluir foto?")) return;
     const photo = selectedClient.photos.find((p: any) => p.id === photoId);
     if (photo) {
-      const origPath = photo.original_url.split("/storage/v1/object/public/media/")[1];
-      const thumbPath = photo.thumbnail_url.split("/storage/v1/object/public/media/")[1];
-      if (origPath) await supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) await supabase.storage.from("media").remove([thumbPath]);
+      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
+      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
+      if (origPath) supabase.storage.from("media").remove([origPath]);
+      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
     }
     const updatedPhotos = selectedClient.photos.filter((p: any) => p.id !== photoId);
     const updatedClient = { ...selectedClient, photos: updatedPhotos };
@@ -254,7 +248,7 @@ const AdminClientsTab = () => {
       await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
       setSelectedClient(updatedClient);
       toast.success("Foto excluída.");
-    } catch { toast.error("Erro"); }
+    } catch { toast.error("Erro ao atualizar cliente."); }
   };
 
   const handleDeleteAllPhotos = async () => {
@@ -264,8 +258,8 @@ const AdminClientsTab = () => {
     for (const photo of selectedClient.photos) {
       const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
       const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
-      if (origPath) await supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) await supabase.storage.from("media").remove([thumbPath]);
+      if (origPath) supabase.storage.from("media").remove([origPath]);
+      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
     }
 
     const updatedClient = { ...selectedClient, photos: [] };
