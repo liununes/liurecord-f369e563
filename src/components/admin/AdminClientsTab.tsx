@@ -33,16 +33,14 @@ const AdminClientsTab = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
-    if (!selectedClient || view !== "edit") return;
-    const updated = clients.find((c: any) => c.id === selectedClient.id);
-    if (updated) {
-      const hasLocalChanges = JSON.stringify(updated.photos) !== JSON.stringify(selectedClient.photos)
-        || updated.pending_requests?.length !== selectedClient.pending_requests?.length;
-      if (!hasLocalChanges) {
-        setSelectedClient(updated);
-      }
-    }
-  }, [clients]);
+    if (view !== "edit" || uploading) return;
+    setSelectedClient((current: any) => {
+      if (!current) return current;
+      const updated = clients.find((c: any) => c.id === current.id);
+      if (!updated) return current;
+      return JSON.stringify(updated) === JSON.stringify(current) ? current : updated;
+    });
+  }, [clients, view, uploading]);
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -315,13 +313,22 @@ const AdminClientsTab = () => {
   const handleToggleDownloaded = async (photoId: string) => {
     if (!selectedClient) return;
     const updatedPhotos = selectedClient.photos.map((p: any) =>
-      p.id === photoId ? { ...p, downloaded: !p.downloaded } : p
+      p.id === photoId
+        ? p.downloaded
+          ? { ...p, downloaded: false, downloaded_at: undefined }
+          : { ...p, downloaded: true, downloaded_at: new Date().toISOString() }
+        : p
     );
     const updatedClient = { ...selectedClient, photos: updatedPhotos };
+    const previousClient = selectedClient;
+    setSelectedClient(updatedClient);
     try {
       await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
-      setSelectedClient(updatedClient);
-    } catch { toast.error("Erro"); }
+      toast.success("Status de download atualizado.");
+    } catch {
+      setSelectedClient(previousClient);
+      toast.error("Erro");
+    }
   };
 
   const filtered = clients.filter((c: any) => c.name.toLowerCase().includes(searchTerm.toLowerCase()));

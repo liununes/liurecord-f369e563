@@ -20,6 +20,7 @@ const ClientGallery = () => {
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const isMutating = useRef(false);
   const clientRef = useRef<any>(null);
+  const clientsRef = useRef<any[]>([]);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -29,6 +30,7 @@ const ClientGallery = () => {
   const hasPendingRequest = pendingRequests.length > 0;
 
   useEffect(() => {
+    clientsRef.current = clients;
     if (isMutating.current) return;
     if (clients.length > 0 && clientId) {
       const found = clients.find((c: any) => c.id === clientId);
@@ -40,6 +42,41 @@ const ClientGallery = () => {
       }
     }
   }, [clients, clientId]);
+
+  const getDirectDownloadUrl = (url: string, fileName: string) => {
+    const separator = url.includes("?") ? "&" : "?";
+    return `${url}${separator}download=${encodeURIComponent(fileName)}`;
+  };
+
+  const isMobileBrowser = () =>
+    typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  const openPreparingTab = (fileName: string) => {
+    if (!isMobileBrowser()) return null;
+    const tab = window.open("", "_blank");
+    if (!tab) return null;
+    tab.document.write(`<!doctype html><html><head><title>Preparando download</title><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body><div><strong>Preparando download...</strong><p>${fileName}</p></div></body></html>`);
+    tab.document.close();
+    return tab;
+  };
+
+  const triggerDownload = (url: string, fileName: string, preparedTab: Window | null) => {
+    const downloadUrl = getDirectDownloadUrl(url, fileName);
+    if (preparedTab && !preparedTab.closed) {
+      preparedTab.location.href = downloadUrl;
+      return;
+    }
+
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = fileName;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => document.body.removeChild(link), 500);
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,24 +91,42 @@ const ClientGallery = () => {
   };
 
   const markDownloaded = async (photo: any) => {
-    if (photo.downloaded) return;
+    const current = clientRef.current;
+    if (!current) return false;
+
+    const currentPhoto = current.photos?.find((p: any) => p.id === photo.id);
+    if (currentPhoto?.downloaded || photo.downloaded) return true;
+
     isMutating.current = true;
-    const prev = clientRef.current;
-    const newPhotos = prev.photos.map((p: any) =>
-      p.id === photo.id ? { ...p, downloaded: true } : p
+    const prev = current;
+    const previousClients = clientsRef.current;
+    const newPhotos = (prev.photos || []).map((p: any) =>
+      p.id === photo.id
+        ? { ...p, downloaded: true, downloaded_at: p.downloaded_at || new Date().toISOString() }
+        : p
     );
     const updated = { ...prev, photos: newPhotos };
+    const sourceClients = clientsRef.current.length ? clientsRef.current : clients;
+    const updatedClients = sourceClients.some((c: any) => c.id === updated.id)
+      ? sourceClients.map((c: any) => c.id === updated.id ? updated : c)
+      : [updated, ...sourceClients];
+
     clientRef.current = updated;
+    clientsRef.current = updatedClients;
     setClient(updated);
+
     try {
-      const updatedClients = clients.map((c: any) => c.id === updated.id ? updated : c);
       await updateClients.mutateAsync(updatedClients);
+      return true;
     } catch (err) {
       toast.error("Erro ao salvar registro de download.");
       clientRef.current = prev;
+      clientsRef.current = previousClients;
       setClient(prev);
+      return false;
+    } finally {
+      setTimeout(() => { isMutating.current = false; }, 1500);
     }
-    setTimeout(() => { isMutating.current = false; }, 1500);
   };
 
   const downloadPhoto = async (photo: any) => {
@@ -80,56 +135,28 @@ const ClientGallery = () => {
       return;
     }
 
-    if (hasReachedLimit && !photo.downloaded) {
+    if (hasReachedLimit && !photo.downloaded && !photo.released) {
       toast.error(`Limite de ${maxPhotos} foto${maxPhotos !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
       return;
     }
 
+    const fileName = photo.filename || "foto.jpg";
+    const preparedTab = openPreparingTab(fileName);
     setDownloadingId(photo.id);
 
-    await markDownloaded(photo);
-
-    const fileName = photo.filename || "foto.jpg";
-
     try {
-      const res = await fetch(photo.original_url);
-      if (!res.ok) throw new Error(`Falha no servidor: ${res.status}`);
-      const blob = await res.blob();
-      if (blob.size === 0) throw new Error("Arquivo vazio");
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }, 3000);
-
-      toast.success("Download iniciado.");
-    } catch (err: any) {
-      console.error("Download via fetch falhou:", err);
-
-      try {
-        const link = document.createElement("a");
-        link.href = photo.original_url;
-        link.download = fileName;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.style.display = "none";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast.success("Download iniciado.");
-      } catch {
-        window.open(photo.original_url, "_blank");
-        toast.info("Salve a imagem manualmente (clique direito > Salvar como).");
+      const saved = await markDownloaded(photo);
+      if (!saved) {
+        if (preparedTab && !preparedTab.closed) preparedTab.close();
+        return;
       }
+
+      triggerDownload(photo.original_url, fileName, preparedTab);
+      toast.success(photo.downloaded ? "Download iniciado novamente." : "Download registrado e iniciado.");
+    } catch (err: any) {
+      console.error("Download falhou:", err);
+      if (preparedTab && !preparedTab.closed) preparedTab.close();
+      toast.error("Não foi possível iniciar o download. Tente novamente.");
     } finally {
       setDownloadingId(null);
     }
@@ -149,23 +176,30 @@ const ClientGallery = () => {
 
   const sendRequest = async () => {
     if (!client || requestingIds.size === 0) return;
+    setSaving(true);
     isMutating.current = true;
     const prev = clientRef.current;
+    const previousClients = clientsRef.current;
     const newPending = [...new Set([...pendingRequests, ...requestingIds])];
     const updated = { ...prev, pending_requests: newPending };
+    const sourceClients = clientsRef.current.length ? clientsRef.current : clients;
+    const updatedClients = sourceClients.map((c: any) => c.id === updated.id ? updated : c);
     clientRef.current = updated;
+    clientsRef.current = updatedClients;
     setClient(updated);
     setRequestingIds(new Set());
     try {
-      const updatedClients = clients.map((c: any) => c.id === updated.id ? updated : c);
       await updateClients.mutateAsync(updatedClients);
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
     } catch {
       clientRef.current = prev;
+      clientsRef.current = previousClients;
       setClient(prev);
       toast.error("Erro ao enviar solicitação.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => { isMutating.current = false; }, 1500);
     }
-    setTimeout(() => { isMutating.current = false; }, 1500);
   };
 
   const sendWhatsApp = () => {
@@ -284,7 +318,8 @@ const ClientGallery = () => {
               const isDownloaded = photo.downloaded;
               const isRequested = requestingIds.has(photo.id);
               const isPending = pendingRequests.includes(photo.id);
-              const isLocked = hasReachedLimit && !isDownloaded && !isRequested && !isPending;
+              const isReleased = photo.released;
+              const isLocked = hasReachedLimit && !isDownloaded && !isRequested && !isPending && !isReleased;
               return (
                 <div
                   key={photo.id}
@@ -309,11 +344,7 @@ const ClientGallery = () => {
                     )}
                   </div>
                   <div className="p-2 flex items-center justify-end bg-card/80 border-t border-border/50">
-                    {isDownloaded ? (
-                      <span className="text-[10px] text-green-500 flex items-center gap-1">
-                        <CheckCircle2 size={10} /> Baixada
-                      </span>
-                    ) : isLocked ? (
+                    {isLocked ? (
                       <Button
                         size="sm"
                         onClick={() => toggleRequest(photo.id)}
@@ -339,7 +370,7 @@ const ClientGallery = () => {
                         ) : (
                           <Download size={11} />
                         )}{" "}
-                        {downloadingId === photo.id ? "Baixando..." : "Baixar"}
+                        {downloadingId === photo.id ? "Baixando..." : isDownloaded ? "Baixar novamente" : "Baixar"}
                       </Button>
                     )}
                   </div>
@@ -378,7 +409,7 @@ const ClientGallery = () => {
               <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-900/50 border border-green-700 text-green-400 font-body text-xs">
                 <CheckCircle2 size={14} /> Baixada
               </span>
-            ) : hasReachedLimit && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
+            ) : hasReachedLimit && !photos[lightboxIndex].released && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
               <Button
                 onClick={() => toggleRequest(photos[lightboxIndex].id)}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full"
