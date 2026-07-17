@@ -30,8 +30,8 @@ const ClientGallery = () => {
   const hasPendingRequest = pendingRequests.length > 0;
 
   useEffect(() => {
-    clientsRef.current = clients;
     if (isMutating.current) return;
+    clientsRef.current = clients;
     if (clients.length > 0 && clientId) {
       const found = clients.find((c: any) => c.id === clientId);
       if (found) {
@@ -51,11 +51,14 @@ const ClientGallery = () => {
   const isMobileBrowser = () =>
     typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+  const escapeHtml = (value: string) =>
+    value.replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[char] || char));
+
   const openPreparingTab = (fileName: string) => {
     if (!isMobileBrowser()) return null;
     const tab = window.open("", "_blank");
     if (!tab) return null;
-    tab.document.write(`<!doctype html><html><head><title>Preparando download</title><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body><div><strong>Preparando download...</strong><p>${fileName}</p></div></body></html>`);
+    tab.document.write(`<!doctype html><html><head><title>Preparando download</title><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body><div><strong>Preparando download...</strong><p>${escapeHtml(fileName)}</p></div></body></html>`);
     tab.document.close();
     return tab;
   };
