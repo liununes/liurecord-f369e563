@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ const ClientGallery = () => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
+  const isMutating = useRef(false);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -27,6 +28,7 @@ const ClientGallery = () => {
   const hasPendingRequest = pendingRequests.length > 0;
 
   useEffect(() => {
+    if (isMutating.current) return;
     if (clients.length > 0 && clientId) {
       const found = clients.find((c: any) => c.id === clientId);
       if (found) {
@@ -51,21 +53,31 @@ const ClientGallery = () => {
 
   const markDownloaded = async (photo: any) => {
     if (photo.downloaded) return;
-    const newPhotos = client.photos.map((p: any) =>
-      p.id === photo.id ? { ...p, downloaded: true } : p
-    );
-    const updatedClient = { ...client, photos: newPhotos };
-    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
-    setClient(updatedClient);
+    isMutating.current = true;
+    setClient((prev: any) => {
+      if (!prev) return prev;
+      const newPhotos = prev.photos.map((p: any) =>
+        p.id === photo.id ? { ...p, downloaded: true } : p
+      );
+      return { ...prev, photos: newPhotos };
+    });
     try {
+      const current = await new Promise<any>((resolve) => {
+        setClient((prev: any) => { resolve(prev); return prev; });
+      });
+      const updatedClients = clients.map((c: any) => c.id === current.id ? current : c);
       await updateClients.mutateAsync(updatedClients);
     } catch (err) {
       toast.error("Erro ao salvar registro de download.");
-      const reverted = client.photos.map((p: any) =>
-        p.id === photo.id ? { ...p, downloaded: false } : p
-      );
-      setClient({ ...client, photos: reverted });
+      setClient((prev: any) => {
+        if (!prev) return prev;
+        const reverted = prev.photos.map((p: any) =>
+          p.id === photo.id ? { ...p, downloaded: false } : p
+        );
+        return { ...prev, photos: reverted };
+      });
     }
+    setTimeout(() => { isMutating.current = false; }, 2000);
   };
 
   const downloadPhoto = async (photo: any) => {
@@ -143,21 +155,24 @@ const ClientGallery = () => {
 
   const sendRequest = async () => {
     if (!client || requestingIds.size === 0) return;
+    isMutating.current = true;
 
     const newPending = [...new Set([...pendingRequests, ...requestingIds])];
-    const updatedClient = { ...client, pending_requests: newPending };
-    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
-
-    setClient(updatedClient);
+    setClient((prev: any) => prev ? { ...prev, pending_requests: newPending } : prev);
     setRequestingIds(new Set());
 
     try {
+      const current = await new Promise<any>((resolve) => {
+        setClient((prev: any) => { resolve(prev); return prev; });
+      });
+      const updatedClients = clients.map((c: any) => c.id === current.id ? current : c);
       await updateClients.mutateAsync(updatedClients);
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
     } catch {
-      setClient(client);
+      setClient((prev: any) => prev ? { ...client, pending_requests: pendingRequests } : prev);
       toast.error("Erro ao enviar solicitação.");
     }
+    setTimeout(() => { isMutating.current = false; }, 2000);
   };
 
   const sendWhatsApp = () => {
