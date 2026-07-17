@@ -251,9 +251,19 @@ const Admin = () => {
   const { data: clients = [] } = useClients();
   const { data: media = [] } = useAllPortfolioMedia();
   
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("admin_active_tab");
+      if (saved && tabs.some((t) => t.id === saved)) return saved;
+    } catch { /* ignore */ }
+    return "overview";
+  });
   const [user, setUser] = useState<any>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    try { sessionStorage.setItem("admin_active_tab", activeTab); } catch { /* ignore */ }
+  }, [activeTab]);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
