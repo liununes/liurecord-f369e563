@@ -115,7 +115,7 @@ const AdminClientsTab = () => {
     const files = e.target.files;
     if (!files || files.length === 0 || !selectedClient) return;
 
-    const MAX_SIZE = 10 * 1024 * 1024;
+    const MAX_SIZE = 50 * 1024 * 1024;
     const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
     setUploading(true);
     setUploadProgress(0);
