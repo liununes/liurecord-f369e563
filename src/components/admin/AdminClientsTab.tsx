@@ -3,7 +3,7 @@ import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { createWatermarkedThumbnail } from "@/lib/watermark";
 import { toast } from "sonner";
-import { Plus, Trash2, Upload, Link as LinkIcon, Search, ChevronLeft, Users, Key, Eye, EyeOff, Heart, X as XIcon, Unlock, Lock, Loader2 } from "lucide-react";
+import { Plus, Trash2, Upload, Link as LinkIcon, Search, ChevronLeft, Users, Key, Eye, EyeOff, Heart, X as XIcon, Unlock, Lock, Loader2, Download, CheckCircle2, Send, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -211,6 +211,45 @@ const AdminClientsTab = () => {
     } catch { toast.error("Erro"); }
   };
 
+  const handleApproveRequest = async (photoId: string) => {
+    if (!selectedClient) return;
+    const updatedPhotos = selectedClient.photos.map((p: any) =>
+      p.id === photoId ? { ...p, released: true } : p
+    );
+    const updatedPending = (selectedClient.pending_requests || []).filter((id: string) => id !== photoId);
+    const updatedClient = { ...selectedClient, photos: updatedPhotos, pending_requests: updatedPending };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success("Download autorizado!");
+    } catch { toast.error("Erro"); }
+  };
+
+  const handleDenyRequest = async (photoId: string) => {
+    if (!selectedClient) return;
+    const updatedPending = (selectedClient.pending_requests || []).filter((id: string) => id !== photoId);
+    const updatedClient = { ...selectedClient, pending_requests: updatedPending };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success("Solicitação recusada.");
+    } catch { toast.error("Erro"); }
+  };
+
+  const handleApproveAllRequests = async () => {
+    if (!selectedClient || !selectedClient.pending_requests?.length) return;
+    const requestIds = selectedClient.pending_requests;
+    const updatedPhotos = selectedClient.photos.map((p: any) =>
+      requestIds.includes(p.id) ? { ...p, released: true } : p
+    );
+    const updatedClient = { ...selectedClient, photos: updatedPhotos, pending_requests: [] };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+      toast.success(`${requestIds.length} download(s) autorizado(s)!`);
+    } catch { toast.error("Erro"); }
+  };
+
   const filtered = clients.filter((c: any) => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (isLoading) {
@@ -279,6 +318,9 @@ const AdminClientsTab = () => {
             const photosCount = client.photos?.length || 0;
             const likedCount = client.photos?.filter((p: any) => p.status === "liked").length || 0;
             const releasedCount = client.photos?.filter((p: any) => p.released).length || 0;
+            const downloadedCount = client.photos?.filter((p: any) => p.downloaded).length || 0;
+            const pendingRequestCount = client.pending_requests?.length || 0;
+            const maxPhotos = client.max_photos || 0;
             return (
               <Card key={client.id} className="bg-card/40 border-border hover:border-primary/40 transition-colors">
                 <CardContent className="p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -286,6 +328,11 @@ const AdminClientsTab = () => {
                     <div className="flex items-center gap-2">
                       <h3 className="font-display text-lg font-semibold">{client.name}</h3>
                       <Badge variant="outline" className="text-[10px]">{photosCount} foto{photosCount !== 1 && "s"}</Badge>
+                      {pendingRequestCount > 0 && (
+                        <Badge className="bg-amber-950/30 text-amber-400 border-amber-800/50 text-[10px]">
+                          <Send size={10} /> {pendingRequestCount} pedido{pendingRequestCount !== 1 ? "s" : ""}
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span className="font-mono bg-secondary px-1.5 py-0.5 rounded text-[11px] flex items-center gap-1">
@@ -295,9 +342,10 @@ const AdminClientsTab = () => {
                         </button>
                       </span>
                     </div>
-                    <div className="flex gap-2 pt-1">
+                    <div className="flex gap-2 pt-1 flex-wrap">
                       <Badge className="bg-rose-950/20 text-rose-500 border-rose-900/30 text-[10px]"><Heart size={10} className="fill-rose-500" /> {likedCount}</Badge>
-                      <Badge className="bg-green-950/20 text-green-400 border-green-900/30 text-[10px]"><Unlock size={10} /> {releasedCount}</Badge>
+                      <Badge className="bg-green-950/20 text-green-400 border-green-900/30 text-[10px]"><Download size={10} /> {downloadedCount}{maxPhotos > 0 ? `/${maxPhotos}` : ""}</Badge>
+                      {releasedCount > 0 && <Badge className="bg-blue-950/20 text-blue-400 border-blue-900/30 text-[10px]"><Unlock size={10} /> {releasedCount}</Badge>}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -344,6 +392,70 @@ const AdminClientsTab = () => {
         </CardContent>
       </Card>
 
+      {selectedClient?.max_photos > 0 && (
+        <Card className="bg-card/50 border-border">
+          <CardHeader className="py-4">
+            <CardTitle className="font-display text-base flex items-center gap-2">
+              <Download size={16} /> Downloads
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-5">
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Baixadas:</span>
+                <Badge className="bg-green-950/20 text-green-400 border-green-900/30">
+                  {selectedClient.photos?.filter((p: any) => p.downloaded).length || 0}
+                </Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Limite:</span>
+                <Badge variant="outline">{selectedClient.max_photos}</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedClient?.pending_requests?.length > 0 && (
+        <Card className="bg-amber-950/20 border-amber-800/50">
+          <CardHeader className="py-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="font-display text-base flex items-center gap-2 text-amber-400">
+                <Send size={16} /> Solicitações Pendentes ({selectedClient.pending_requests.length})
+              </CardTitle>
+              <Button size="sm" onClick={handleApproveAllRequests} className="bg-green-600 hover:bg-green-700 text-white text-xs">
+                <Check size={12} /> Aprovar Todas
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="pb-5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {selectedClient.pending_requests.map((photoId: string) => {
+                const photo = selectedClient.photos?.find((p: any) => p.id === photoId);
+                if (!photo) return null;
+                return (
+                  <div key={photoId} className="flex items-center gap-3 bg-card/60 border border-amber-800/30 rounded-lg p-3">
+                    <img src={photo.thumbnail_url} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-foreground truncate">{photo.filename}</p>
+                      <p className="text-[10px] text-muted-foreground">Solicitado pelo cliente</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="icon" onClick={() => handleApproveRequest(photoId)} className="h-7 w-7 bg-green-600 hover:bg-green-700 text-white">
+                        <Check size={13} />
+                      </Button>
+                      <Button size="icon" onClick={() => handleDenyRequest(photoId)} className="h-7 w-7 bg-red-600/20 hover:bg-red-600/40 text-red-400">
+                        <X size={13} />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-card/50 border-dashed border-2 border-border p-6 text-center hover:border-primary/40">
         <div className="flex flex-col items-center space-y-3">
           <Upload size={24} className="text-primary" />
@@ -381,9 +493,12 @@ const AdminClientsTab = () => {
                     {photo.status === "liked" && <Badge className="bg-rose-600 text-white border-none text-[10px]"><Heart size={10} className="fill-white" /> Escolhida</Badge>}
                     {photo.status === "disliked" && <Badge className="bg-red-600 text-white border-none text-[10px]"><XIcon size={10} /> Não</Badge>}
                   </div>
-                  <div className="absolute top-2 right-2">
+                  <div className="absolute top-2 right-2 flex gap-1">
+                    {photo.downloaded && (
+                      <div className="bg-green-500 text-white rounded-full p-1"><CheckCircle2 size={12} /></div>
+                    )}
                     {photo.released
-                      ? <div className="bg-green-600 text-white rounded-full p-1"><Unlock size={12} /></div>
+                      ? <div className="bg-blue-500 text-white rounded-full p-1"><Unlock size={12} /></div>
                       : <div className="bg-black/50 text-muted-foreground rounded-full p-1"><Lock size={12} /></div>}
                   </div>
                 </div>

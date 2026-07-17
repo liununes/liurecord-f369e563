@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
-import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import { Heart, X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ClientGallery = () => {
@@ -17,8 +17,14 @@ const ClientGallery = () => {
   const [saving, setSaving] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
 
   const photos = client?.photos || [];
+  const maxPhotos = client?.max_photos || 0;
+  const downloadedCount = photos.filter((p: any) => p.downloaded).length;
+  const hasReachedLimit = maxPhotos > 0 && downloadedCount >= maxPhotos;
+  const pendingRequests = client?.pending_requests || [];
+  const hasPendingRequest = pendingRequests.length > 0;
 
   useEffect(() => {
     if (clients.length > 0 && clientId) {
@@ -58,7 +64,7 @@ const ClientGallery = () => {
     try {
       await updateClients.mutateAsync(updatedClients);
       toast.success("Escolha salva!");
-    } catch (err: any) {
+    } catch {
       setClient(client);
       toast.error("Erro ao salvar. Tente novamente.");
     }
@@ -68,6 +74,11 @@ const ClientGallery = () => {
   const downloadPhoto = async (photo: any) => {
     if (!photo.original_url) {
       toast.error("URL da foto não disponível.");
+      return;
+    }
+
+    if (hasReachedLimit && !photo.downloaded) {
+      toast.error(`Limite de ${maxPhotos} foto${maxPhotos !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
       return;
     }
 
@@ -91,11 +102,19 @@ const ClientGallery = () => {
         URL.revokeObjectURL(url);
       }, 3000);
 
+      if (!photo.downloaded) {
+        const newPhotos = client.photos.map((p: any) =>
+          p.id === photo.id ? { ...p, downloaded: true } : p
+        );
+        const updatedClient = { ...client, photos: newPhotos };
+        const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
+        setClient(updatedClient);
+        await updateClients.mutateAsync(updatedClients);
+      }
+
       toast.success("Download iniciado.");
     } catch (err: any) {
       console.error("Download via fetch falhou:", err);
-
-      // Fallback 1: link direto
       try {
         const link = document.createElement("a");
         link.href = photo.original_url;
@@ -106,14 +125,55 @@ const ClientGallery = () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+
+        if (!photo.downloaded) {
+          const newPhotos = client.photos.map((p: any) =>
+            p.id === photo.id ? { ...p, downloaded: true } : p
+          );
+          const updatedClient = { ...client, photos: newPhotos };
+          const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
+          setClient(updatedClient);
+          await updateClients.mutateAsync(updatedClients);
+        }
+
         toast.success("Download iniciado.");
       } catch {
-        // Fallback 2: abrir em nova aba
         window.open(photo.original_url, "_blank");
         toast.info("Salve a imagem manualmente (clique direito > Salvar como).");
       }
     } finally {
       setDownloadingId(null);
+    }
+  };
+
+  const toggleRequest = (photoId: string) => {
+    setRequestingIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(photoId)) {
+        next.delete(photoId);
+      } else {
+        next.add(photoId);
+      }
+      return next;
+    });
+  };
+
+  const sendRequest = async () => {
+    if (!client || requestingIds.size === 0) return;
+
+    const newPending = [...new Set([...pendingRequests, ...requestingIds])];
+    const updatedClient = { ...client, pending_requests: newPending };
+    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
+
+    setClient(updatedClient);
+    setRequestingIds(new Set());
+
+    try {
+      await updateClients.mutateAsync(updatedClients);
+      toast.success("Solicitação enviada! Aguarde autorização do administrador.");
+    } catch {
+      setClient(client);
+      toast.error("Erro ao enviar solicitação.");
     }
   };
 
@@ -197,10 +257,36 @@ const ClientGallery = () => {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        {client.max_photos && (
-          <p className="text-xs text-amber-500 font-medium font-body mb-4">
-            Máximo de <strong>{client.max_photos}</strong> foto{client.max_photos !== 1 && "s"}.
-          </p>
+        {maxPhotos > 0 && (
+          <div className={`mb-4 p-3 rounded-lg border text-xs font-body flex items-center gap-2 ${
+            hasReachedLimit
+              ? "bg-amber-950/30 border-amber-800/50 text-amber-400"
+              : "bg-card/50 border-border text-muted-foreground"
+          }`}>
+            {hasReachedLimit ? <Lock size={14} /> : <Download size={14} />}
+            <span>
+              Downloads: <strong className="text-foreground">{downloadedCount}</strong> de <strong className="text-foreground">{maxPhotos}</strong> foto{maxPhotos !== 1 ? "s" : ""}
+            </span>
+            {hasReachedLimit && (
+              <span className="ml-auto text-amber-500">Limite atingido</span>
+            )}
+          </div>
+        )}
+
+        {hasPendingRequest && (
+          <div className="mb-4 p-3 rounded-lg border bg-blue-950/30 border-blue-800/50 text-blue-400 text-xs font-body flex items-center gap-2">
+            <Send size={14} />
+            <span>Solicitação de <strong>{pendingRequests.length}</strong> foto{pendingRequests.length !== 1 ? "s" : ""} enviada. Aguarde autorização.</span>
+          </div>
+        )}
+
+        {requestingIds.size > 0 && (
+          <div className="mb-4 p-3 rounded-lg border bg-primary/10 border-primary/30 text-primary text-xs font-body flex items-center justify-between">
+            <span>{requestingIds.size} foto{requestingIds.size !== 1 ? "s" : ""} selecionada{requestingIds.size !== 1 ? "s" : ""} para solicitação</span>
+            <Button size="sm" onClick={sendRequest} disabled={saving} className="bg-gradient-gold text-primary-foreground text-[10px] h-7">
+              <Send size={11} /> Enviar Solicitação
+            </Button>
+          </div>
         )}
 
         {photos.length === 0 ? (
@@ -211,6 +297,10 @@ const ClientGallery = () => {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {photos.map((photo: any, index: number) => {
               const isLiked = photo.status === "liked";
+              const isDownloaded = photo.downloaded;
+              const isRequested = requestingIds.has(photo.id);
+              const isPending = pendingRequests.includes(photo.id);
+              const isLocked = hasReachedLimit && !isDownloaded && !isRequested && !isPending;
               return (
                 <div
                   key={photo.id}
@@ -225,9 +315,19 @@ const ClientGallery = () => {
                         <Heart size={8} className="fill-white" /> Escolhida
                       </div>
                     )}
-                    {photo.released && (
+                    {isDownloaded && (
                       <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow">
-                        <Download size={10} />
+                        <CheckCircle2 size={10} />
+                      </div>
+                    )}
+                    {isPending && !isDownloaded && (
+                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1 shadow">
+                        <Send size={10} />
+                      </div>
+                    )}
+                    {isLocked && (
+                      <div className="absolute top-2 right-2 bg-zinc-700 text-white rounded-full p-1 shadow">
+                        <Lock size={10} />
                       </div>
                     )}
                   </div>
@@ -243,19 +343,39 @@ const ClientGallery = () => {
                     >
                       {saving ? <Loader2 size={14} className="animate-spin" /> : <Heart size={14} className={isLiked ? "fill-white" : ""} />}
                     </button>
-                    <Button
-                      size="sm"
-                      onClick={() => downloadPhoto(photo)}
-                      disabled={downloadingId === photo.id}
-                      className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
-                    >
-                      {downloadingId === photo.id ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <Download size={11} />
-                      )}{" "}
-                      {downloadingId === photo.id ? "Baixando..." : "Baixar"}
-                    </Button>
+                    {isDownloaded ? (
+                      <span className="text-[10px] text-green-500 flex items-center gap-1">
+                        <CheckCircle2 size={10} /> Baixada
+                      </span>
+                    ) : isLocked ? (
+                      <Button
+                        size="sm"
+                        onClick={() => toggleRequest(photo.id)}
+                        disabled={saving}
+                        className={`text-[10px] h-7 px-2 ${
+                          isRequested
+                            ? "bg-primary text-primary-foreground"
+                            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
+                        }`}
+                      >
+                        {isRequested ? <CheckCircle2 size={11} /> : <Lock size={11} />}{" "}
+                        {isRequested ? "Selecionada" : "Solicitar"}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        onClick={() => downloadPhoto(photo)}
+                        disabled={downloadingId === photo.id}
+                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
+                      >
+                        {downloadingId === photo.id ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Download size={11} />
+                        )}{" "}
+                        {downloadingId === photo.id ? "Baixando..." : "Baixar"}
+                      </Button>
+                    )}
                   </div>
                 </div>
               );
@@ -299,18 +419,35 @@ const ClientGallery = () => {
               <Heart size={14} className={photos[lightboxIndex].status === "liked" ? "fill-white" : ""} />
               {photos[lightboxIndex].status === "liked" ? "Escolhida" : "Escolher"}
             </button>
-            <Button
-              onClick={() => downloadPhoto(photos[lightboxIndex])}
-              disabled={downloadingId === photos[lightboxIndex].id}
-              className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
-            >
-              {downloadingId === photos[lightboxIndex].id ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Download size={14} />
-              )}{" "}
-              {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
-            </Button>
+            {photos[lightboxIndex].downloaded ? (
+              <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-green-900/50 border border-green-700 text-green-400 font-body text-xs">
+                <CheckCircle2 size={14} /> Baixada
+              </span>
+            ) : hasReachedLimit && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
+              <Button
+                onClick={() => toggleRequest(photos[lightboxIndex].id)}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full"
+              >
+                <Lock size={14} /> Solicitar
+              </Button>
+            ) : pendingRequests.includes(photos[lightboxIndex].id) ? (
+              <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-900/50 border border-blue-700 text-blue-400 font-body text-xs">
+                <Send size={14} /> Solicitada
+              </span>
+            ) : (
+              <Button
+                onClick={() => downloadPhoto(photos[lightboxIndex])}
+                disabled={downloadingId === photos[lightboxIndex].id}
+                className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
+              >
+                {downloadingId === photos[lightboxIndex].id ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Download size={14} />
+                )}{" "}
+                {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar Original"}
+              </Button>
+            )}
           </div>
         </div>
       )}

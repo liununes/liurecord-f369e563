@@ -5,6 +5,7 @@ export interface ClientPhoto {
   filename: string;
   status: "pending" | "liked" | "disliked";
   released: boolean;
+  downloaded?: boolean;
 }
 
 export interface Client {
@@ -13,6 +14,7 @@ export interface Client {
   password: string;
   watermark_text?: string;
   max_photos?: number;
+  pending_requests?: string[];
   photos: ClientPhoto[];
   created_at: string;
 }
