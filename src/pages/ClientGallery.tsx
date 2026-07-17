@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
 import { toast } from "sonner";
 import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: clients = [], isLoading } = useClients();
   const updateClients = useUpdateClients();
 
@@ -19,8 +21,6 @@ const ClientGallery = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const isMutating = useRef(false);
-  const clientRef = useRef<any>(null);
-  const clientsRef = useRef<any[]>([]);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -31,57 +31,25 @@ const ClientGallery = () => {
 
   useEffect(() => {
     if (isMutating.current) return;
-    clientsRef.current = clients;
     if (clients.length > 0 && clientId) {
       const found = clients.find((c: any) => c.id === clientId);
       if (found) {
         setClient(found);
-        clientRef.current = found;
         const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
         if (sessionAuth === "true") setIsAuthenticated(true);
       }
     }
   }, [clients, clientId]);
 
-  const getDirectDownloadUrl = (url: string, fileName: string) => {
-    const separator = url.includes("?") ? "&" : "?";
-    return `${url}${separator}download=${encodeURIComponent(fileName)}`;
-  };
-
-  const isMobileBrowser = () =>
-    typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod|Mobile|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-  const escapeHtml = (value: string) =>
-    value.replace(/[&<>"]/g, (char) => {
-      const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-      return entities[char] || char;
-    });
-
-  const openPreparingTab = (fileName: string) => {
-    if (!isMobileBrowser()) return null;
-    const tab = window.open("", "_blank");
-    if (!tab) return null;
-    tab.document.write(`<!doctype html><html><head><title>Preparando download</title><meta name="viewport" content="width=device-width,initial-scale=1" /></head><body><div><strong>Preparando download...</strong><p>${escapeHtml(fileName)}</p></div></body></html>`);
-    tab.document.close();
-    return tab;
-  };
-
-  const triggerDownload = (url: string, fileName: string, preparedTab: Window | null) => {
-    const downloadUrl = getDirectDownloadUrl(url, fileName);
-    if (preparedTab && !preparedTab.closed) {
-      preparedTab.location.href = downloadUrl;
-      return;
-    }
-
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = fileName;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    window.setTimeout(() => document.body.removeChild(link), 500);
+  const saveToDb = async (updatedClients: any[]) => {
+    const { error } = await (await import("@/integrations/supabase/client")).supabase
+      .from("site_content")
+      .upsert(
+        { section_key: "clients", content: updatedClients },
+        { onConflict: "section_key" }
+      );
+    if (error) throw error;
+    await queryClient.invalidateQueries({ queryKey: ["clients_data"] });
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -96,39 +64,29 @@ const ClientGallery = () => {
     }
   };
 
-  const markDownloaded = async (photo: any) => {
-    const current = clientRef.current;
-    if (!current) return false;
+  const markDownloaded = async (photo: any): Promise<boolean> => {
+    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
+    const freshClient = freshClients.find((c: any) => c.id === clientId);
+    if (!freshClient) return false;
 
-    const currentPhoto = current.photos?.find((p: any) => p.id === photo.id);
-    if (currentPhoto?.downloaded || photo.downloaded) return true;
+    const photoData = freshClient.photos?.find((p: any) => p.id === photo.id);
+    if (photoData?.downloaded) return true;
 
     isMutating.current = true;
-    const prev = current;
-    const previousClients = clientsRef.current;
-    const newPhotos = (prev.photos || []).map((p: any) =>
-      p.id === photo.id
-        ? { ...p, downloaded: true, downloaded_at: p.downloaded_at || new Date().toISOString() }
-        : p
+    const newPhotos = (freshClient.photos || []).map((p: any) =>
+      p.id === photo.id ? { ...p, downloaded: true } : p
     );
-    const updated = { ...prev, photos: newPhotos };
-    const sourceClients = clientsRef.current.length ? clientsRef.current : clients;
-    const updatedClients = sourceClients.some((c: any) => c.id === updated.id)
-      ? sourceClients.map((c: any) => c.id === updated.id ? updated : c)
-      : [updated, ...sourceClients];
+    const updatedClient = { ...freshClient, photos: newPhotos };
+    const updatedClients = freshClients.map((c: any) => c.id === updatedClient.id ? updatedClient : c);
 
-    clientRef.current = updated;
-    clientsRef.current = updatedClients;
-    setClient(updated);
+    setClient(updatedClient);
 
     try {
-      await updateClients.mutateAsync(updatedClients);
+      await saveToDb(updatedClients);
       return true;
     } catch (err) {
       toast.error("Erro ao salvar registro de download.");
-      clientRef.current = prev;
-      clientsRef.current = previousClients;
-      setClient(prev);
+      setClient(freshClient);
       return false;
     } finally {
       setTimeout(() => { isMutating.current = false; }, 1500);
@@ -141,28 +99,61 @@ const ClientGallery = () => {
       return;
     }
 
+    if (photo.downloaded && !photo.released) {
+      toast.error("Essa foto já foi baixada. Aguarde liberação do administrador para baixar novamente.");
+      return;
+    }
+
     if (hasReachedLimit && !photo.downloaded && !photo.released) {
       toast.error(`Limite de ${maxPhotos} foto${maxPhotos !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
       return;
     }
 
     const fileName = photo.filename || "foto.jpg";
-    const preparedTab = openPreparingTab(fileName);
     setDownloadingId(photo.id);
 
     try {
       const saved = await markDownloaded(photo);
-      if (!saved) {
-        if (preparedTab && !preparedTab.closed) preparedTab.close();
-        return;
-      }
+      if (!saved) return;
 
-      triggerDownload(photo.original_url, fileName, preparedTab);
-      toast.success(photo.downloaded ? "Download iniciado novamente." : "Download registrado e iniciado.");
+      const res = await fetch(photo.original_url);
+      if (!res.ok) throw new Error(`Falha: ${res.status}`);
+      const blob = await res.blob();
+
+      if (blob.size === 0) throw new Error("Arquivo vazio");
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 3000);
+
+      toast.success("Download iniciado.");
     } catch (err: any) {
       console.error("Download falhou:", err);
-      if (preparedTab && !preparedTab.closed) preparedTab.close();
-      toast.error("Não foi possível iniciar o download. Tente novamente.");
+      try {
+        const link = document.createElement("a");
+        link.href = photo.original_url;
+        link.download = fileName;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        toast.success("Download iniciado.");
+      } catch {
+        window.open(photo.original_url, "_blank");
+        toast.info("Salve a imagem manualmente (clique direito > Salvar como).");
+      }
     } finally {
       setDownloadingId(null);
     }
@@ -182,25 +173,24 @@ const ClientGallery = () => {
 
   const sendRequest = async () => {
     if (!client || requestingIds.size === 0) return;
+
+    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
+    const freshClient = freshClients.find((c: any) => c.id === clientId) || client;
+
+    const newPending = [...new Set([...pendingRequests, ...requestingIds])];
+    const updated = { ...freshClient, pending_requests: newPending };
+    const updatedClients = freshClients.map((c: any) => c.id === updated.id ? updated : c);
+
     setSaving(true);
     isMutating.current = true;
-    const prev = clientRef.current;
-    const previousClients = clientsRef.current;
-    const newPending = [...new Set([...pendingRequests, ...requestingIds])];
-    const updated = { ...prev, pending_requests: newPending };
-    const sourceClients = clientsRef.current.length ? clientsRef.current : clients;
-    const updatedClients = sourceClients.map((c: any) => c.id === updated.id ? updated : c);
-    clientRef.current = updated;
-    clientsRef.current = updatedClients;
     setClient(updated);
     setRequestingIds(new Set());
+
     try {
-      await updateClients.mutateAsync(updatedClients);
+      await saveToDb(updatedClients);
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
     } catch {
-      clientRef.current = prev;
-      clientsRef.current = previousClients;
-      setClient(prev);
+      setClient(client);
       toast.error("Erro ao enviar solicitação.");
     } finally {
       setSaving(false);
@@ -259,6 +249,22 @@ const ClientGallery = () => {
       </div>
     );
   }
+
+  const canDownload = (photo: any) => {
+    if (!photo.downloaded) return true;
+    if (photo.released) return true;
+    return false;
+  };
+
+  const isLocked = (photo: any) => {
+    if (photo.downloaded && !photo.released) return true;
+    if (hasReachedLimit && !photo.downloaded && !photo.released) return true;
+    return false;
+  };
+
+  const needsRequest = (photo: any) => {
+    return hasReachedLimit && !photo.downloaded && !photo.released;
+  };
 
   return (
     <div className="min-h-screen bg-[#0c0a09] text-foreground font-body pb-12">
@@ -324,8 +330,9 @@ const ClientGallery = () => {
               const isDownloaded = photo.downloaded;
               const isRequested = requestingIds.has(photo.id);
               const isPending = pendingRequests.includes(photo.id);
-              const isReleased = photo.released;
-              const isLocked = hasReachedLimit && !isDownloaded && !isRequested && !isPending && !isReleased;
+              const isPhotoLocked = isLocked(photo);
+              const isPhotoCanDownload = canDownload(photo);
+              const isNeedRequest = needsRequest(photo);
               return (
                 <div
                   key={photo.id}
@@ -333,24 +340,29 @@ const ClientGallery = () => {
                 >
                   <div className="aspect-square bg-muted relative overflow-hidden cursor-pointer" onClick={() => setLightboxIndex(index)}>
                     <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
-                    {isDownloaded && (
+                    {isDownloaded && photo.released && (
                       <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow">
                         <CheckCircle2 size={10} />
                       </div>
                     )}
-                    {isPending && !isDownloaded && (
-                      <div className="absolute top-2 right-2 bg-blue-500 text-white rounded-full p-1 shadow">
+                    {isDownloaded && !photo.released && (
+                      <div className="absolute top-2 right-2 bg-amber-600 text-white rounded-full p-1 shadow">
+                        <Lock size={10} />
+                      </div>
+                    )}
+                    {isPending && (
+                      <div className="absolute top-2 left-2 bg-blue-500 text-white rounded-full p-1 shadow">
                         <Send size={10} />
                       </div>
                     )}
-                    {isLocked && (
+                    {isNeedRequest && !isPending && (
                       <div className="absolute top-2 right-2 bg-zinc-700 text-white rounded-full p-1 shadow">
                         <Lock size={10} />
                       </div>
                     )}
                   </div>
                   <div className="p-2 flex items-center justify-end bg-card/80 border-t border-border/50">
-                    {isLocked ? (
+                    {isNeedRequest && !isPending ? (
                       <Button
                         size="sm"
                         onClick={() => toggleRequest(photo.id)}
@@ -364,6 +376,14 @@ const ClientGallery = () => {
                         {isRequested ? <CheckCircle2 size={11} /> : <Lock size={11} />}{" "}
                         {isRequested ? "Selecionada" : "Solicitar"}
                       </Button>
+                    ) : isPending && !isDownloaded ? (
+                      <span className="text-[10px] text-blue-400 flex items-center gap-1">
+                        <Send size={10} /> Solicitada
+                      </span>
+                    ) : isPhotoLocked && !isPhotoCanDownload ? (
+                      <span className="text-[10px] text-amber-400 flex items-center gap-1">
+                        <Lock size={10} /> Aguardando liberação
+                      </span>
                     ) : (
                       <Button
                         size="sm"
@@ -411,7 +431,7 @@ const ClientGallery = () => {
           </div>
 
           <div className="p-6 bg-gradient-to-t from-black/85 to-transparent flex items-center justify-center gap-4" onClick={(e) => e.stopPropagation()}>
-            {hasReachedLimit && !photos[lightboxIndex].downloaded && !photos[lightboxIndex].released && !requestingIds.has(photos[lightboxIndex].id) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
+            {needsRequest(photos[lightboxIndex]) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
               <Button
                 onClick={() => toggleRequest(photos[lightboxIndex].id)}
                 className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full"
@@ -421,6 +441,10 @@ const ClientGallery = () => {
             ) : pendingRequests.includes(photos[lightboxIndex].id) ? (
               <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-900/50 border border-blue-700 text-blue-400 font-body text-xs">
                 <Send size={14} /> Solicitada
+              </span>
+            ) : isLocked(photos[lightboxIndex]) && !canDownload(photos[lightboxIndex]) ? (
+              <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-900/50 border border-amber-700 text-amber-400 font-body text-xs">
+                <Lock size={14} /> Aguardando liberação
               </span>
             ) : (
               <Button
@@ -433,11 +457,7 @@ const ClientGallery = () => {
                 ) : (
                   <Download size={14} />
                 )}{" "}
-                {downloadingId === photos[lightboxIndex].id
-                  ? "Baixando..."
-                  : photos[lightboxIndex].downloaded
-                    ? "Baixar novamente"
-                    : "Baixar Original"}
+                {downloadingId === photos[lightboxIndex].id ? "Baixando..." : photos[lightboxIndex].downloaded ? "Baixar novamente" : "Baixar Original"}
               </Button>
             )}
           </div>
