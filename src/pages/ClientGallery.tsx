@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
@@ -21,6 +21,7 @@ const ClientGallery = () => {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
   const isMutating = useRef(false);
+  const downloadInProgress = useRef<Set<string>>(new Set());
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -41,17 +42,6 @@ const ClientGallery = () => {
     }
   }, [clients, clientId]);
 
-  const saveToDb = async (updatedClients: any[]) => {
-    const { error } = await (await import("@/integrations/supabase/client")).supabase
-      .from("site_content")
-      .upsert(
-        { section_key: "clients", content: updatedClients },
-        { onConflict: "section_key" }
-      );
-    if (error) throw error;
-    await queryClient.invalidateQueries({ queryKey: ["clients_data"] });
-  };
-
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!client) return;
@@ -64,17 +54,17 @@ const ClientGallery = () => {
     }
   };
 
-  const markDownloaded = async (photo: any): Promise<boolean> => {
+  const markDownloaded = useCallback(async (photoId: string): Promise<boolean> => {
     const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
     const freshClient = freshClients.find((c: any) => c.id === clientId);
     if (!freshClient) return false;
 
-    const photoData = freshClient.photos?.find((p: any) => p.id === photo.id);
+    const photoData = freshClient.photos?.find((p: any) => p.id === photoId);
     if (photoData?.downloaded) return true;
 
     isMutating.current = true;
     const newPhotos = (freshClient.photos || []).map((p: any) =>
-      p.id === photo.id ? { ...p, downloaded: true } : p
+      p.id === photoId ? { ...p, downloaded: true } : p
     );
     const updatedClient = { ...freshClient, photos: newPhotos };
     const updatedClients = freshClients.map((c: any) => c.id === updatedClient.id ? updatedClient : c);
@@ -82,7 +72,7 @@ const ClientGallery = () => {
     setClient(updatedClient);
 
     try {
-      await saveToDb(updatedClients);
+      await updateClients.mutateAsync(updatedClients);
       return true;
     } catch (err) {
       toast.error("Erro ao salvar registro de download.");
@@ -91,13 +81,15 @@ const ClientGallery = () => {
     } finally {
       setTimeout(() => { isMutating.current = false; }, 1500);
     }
-  };
+  }, [clients, clientId, queryClient, updateClients]);
 
-  const downloadPhoto = async (photo: any) => {
+  const downloadPhoto = useCallback(async (photo: any) => {
     if (!photo.original_url) {
       toast.error("URL da foto não disponível.");
       return;
     }
+
+    if (downloadInProgress.current.has(photo.id)) return;
 
     if (photo.downloaded && !photo.released) {
       toast.error("Essa foto já foi baixada. Aguarde liberação do administrador para baixar novamente.");
@@ -109,55 +101,63 @@ const ClientGallery = () => {
       return;
     }
 
+    downloadInProgress.current.add(photo.id);
     const fileName = photo.filename || "foto.jpg";
     setDownloadingId(photo.id);
 
     try {
-      const saved = await markDownloaded(photo);
-      if (!saved) return;
-
-      const res = await fetch(photo.original_url);
-      if (!res.ok) throw new Error(`Falha: ${res.status}`);
-      const blob = await res.blob();
-
-      if (blob.size === 0) throw new Error("Arquivo vazio");
-
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-      link.style.display = "none";
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }, 3000);
-
-      toast.success("Download iniciado.");
-    } catch (err: any) {
-      console.error("Download falhou:", err);
-      try {
-        const link = document.createElement("a");
-        link.href = photo.original_url;
-        link.download = fileName;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.style.display = "none";
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast.success("Download iniciado.");
-      } catch {
-        window.open(photo.original_url, "_blank");
-        toast.info("Salve a imagem manualmente (clique direito > Salvar como).");
+      const saved = await markDownloaded(photo.id);
+      if (!saved) {
+        downloadInProgress.current.delete(photo.id);
+        setDownloadingId(null);
+        return;
       }
+
+      try {
+        const res = await fetch(photo.original_url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (blob.size === 0) throw new Error("Arquivo vazio");
+
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        a.style.display = "none";
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 5000);
+
+        toast.success("Download iniciado.");
+      } catch (fetchErr) {
+        console.error("Fetch falhou, tentando link direto:", fetchErr);
+        try {
+          const a2 = document.createElement("a");
+          a2.href = photo.original_url;
+          a2.download = fileName;
+          a2.target = "_blank";
+          a2.rel = "noopener noreferrer";
+          a2.style.display = "none";
+          document.body.appendChild(a2);
+          a2.click();
+          setTimeout(() => document.body.removeChild(a2), 1000);
+          toast.success("Download iniciado.");
+        } catch {
+          window.location.href = photo.original_url;
+          toast.info("Se o download não iniciar, segure e selecione 'Salvar imagem'.");
+        }
+      }
+    } catch (err) {
+      console.error("Erro geral no download:", err);
+      toast.error("Erro ao processar download. Tente novamente.");
     } finally {
+      downloadInProgress.current.delete(photo.id);
       setDownloadingId(null);
     }
-  };
+  }, [clients, clientId, hasReachedLimit, maxPhotos, markDownloaded]);
 
   const toggleRequest = (photoId: string) => {
     setRequestingIds((prev) => {
@@ -171,7 +171,7 @@ const ClientGallery = () => {
     });
   };
 
-  const sendRequest = async () => {
+  const sendRequest = useCallback(async () => {
     if (!client || requestingIds.size === 0) return;
 
     const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
@@ -187,7 +187,7 @@ const ClientGallery = () => {
     setRequestingIds(new Set());
 
     try {
-      await saveToDb(updatedClients);
+      await updateClients.mutateAsync(updatedClients);
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
     } catch {
       setClient(client);
@@ -196,7 +196,7 @@ const ClientGallery = () => {
       setSaving(false);
       setTimeout(() => { isMutating.current = false; }, 1500);
     }
-  };
+  }, [client, clients, clientId, requestingIds, pendingRequests, queryClient, updateClients]);
 
   const sendWhatsApp = () => {
     const text = `Olá! Concluí a seleção. Tenho ${photos.length} fotos na galeria.`;
