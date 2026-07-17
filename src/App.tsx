@@ -11,7 +11,17 @@ import Admin from "./pages/Admin";
 import ClientGallery from "./pages/ClientGallery";
 import ClientPortal from "./pages/ClientPortal";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 30,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      refetchOnMount: true,
+      gcTime: 1000 * 60 * 5,
+    },
+  },
+});
 
 const SCROLL_KEY = "scroll_positions";
 

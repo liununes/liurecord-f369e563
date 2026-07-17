@@ -33,9 +33,12 @@ const AdminClientsTab = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
-    if (selectedClient && view === "edit") {
-      const updated = clients.find((c: any) => c.id === selectedClient.id);
-      if (updated) {
+    if (!selectedClient || view !== "edit") return;
+    const updated = clients.find((c: any) => c.id === selectedClient.id);
+    if (updated) {
+      const hasLocalChanges = JSON.stringify(updated.photos) !== JSON.stringify(selectedClient.photos)
+        || updated.pending_requests?.length !== selectedClient.pending_requests?.length;
+      if (!hasLocalChanges) {
         setSelectedClient(updated);
       }
     }

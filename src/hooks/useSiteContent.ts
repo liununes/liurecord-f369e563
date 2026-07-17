@@ -168,7 +168,6 @@ export function useClients() {
 
       const content = data.content as any;
 
-      // Encrypted format (old)
       if (content.encrypted) {
         try {
           const decrypted = await decryptData(content.encrypted, "liu_record_proofing_vault");
@@ -176,9 +175,11 @@ export function useClients() {
         } catch { return []; }
       }
 
-      // Plain JSON (new)
       return Array.isArray(content) ? content : [];
     },
+    refetchInterval: 10000,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 
