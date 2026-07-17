@@ -71,6 +71,19 @@ const ClientGallery = () => {
     setSaving(false);
   };
 
+  const markDownloaded = async (photo: any) => {
+    if (photo.downloaded) return;
+    const newPhotos = client.photos.map((p: any) =>
+      p.id === photo.id ? { ...p, downloaded: true } : p
+    );
+    const updatedClient = { ...client, photos: newPhotos };
+    const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
+    setClient(updatedClient);
+    try {
+      await updateClients.mutateAsync(updatedClients);
+    } catch {}
+  };
+
   const downloadPhoto = async (photo: any) => {
     if (!photo.original_url) {
       toast.error("URL da foto não disponível.");
@@ -84,6 +97,10 @@ const ClientGallery = () => {
 
     setDownloadingId(photo.id);
 
+    await markDownloaded(photo);
+
+    const fileName = photo.filename || "foto.jpg";
+
     try {
       const res = await fetch(photo.original_url);
       if (!res.ok) throw new Error(`Falha no servidor: ${res.status}`);
@@ -93,7 +110,9 @@ const ClientGallery = () => {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = photo.filename || "foto.jpg";
+      link.download = fileName;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
       link.style.display = "none";
       document.body.appendChild(link);
       link.click();
@@ -102,40 +121,20 @@ const ClientGallery = () => {
         URL.revokeObjectURL(url);
       }, 3000);
 
-      if (!photo.downloaded) {
-        const newPhotos = client.photos.map((p: any) =>
-          p.id === photo.id ? { ...p, downloaded: true } : p
-        );
-        const updatedClient = { ...client, photos: newPhotos };
-        const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
-        setClient(updatedClient);
-        await updateClients.mutateAsync(updatedClients);
-      }
-
       toast.success("Download iniciado.");
     } catch (err: any) {
       console.error("Download via fetch falhou:", err);
+
       try {
         const link = document.createElement("a");
         link.href = photo.original_url;
-        link.download = photo.filename || "foto.jpg";
+        link.download = fileName;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.style.display = "none";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-
-        if (!photo.downloaded) {
-          const newPhotos = client.photos.map((p: any) =>
-            p.id === photo.id ? { ...p, downloaded: true } : p
-          );
-          const updatedClient = { ...client, photos: newPhotos };
-          const updatedClients = clients.map((c: any) => c.id === client.id ? updatedClient : c);
-          setClient(updatedClient);
-          await updateClients.mutateAsync(updatedClients);
-        }
-
         toast.success("Download iniciado.");
       } catch {
         window.open(photo.original_url, "_blank");
@@ -401,7 +400,7 @@ const ClientGallery = () => {
             <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === 0 ? photos.length - 1 : lightboxIndex - 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute left-4">
               <ChevronLeft size={24} />
             </button>
-            <img src={photos[lightboxIndex].original_url} alt="Ampliada" className="max-w-[90%] max-h-[80vh] object-contain rounded shadow-2xl" onClick={(e) => e.stopPropagation()} />
+            <img src={photos[lightboxIndex].thumbnail_url} alt="Ampliada" className="max-w-[90%] max-h-[80vh] object-contain rounded shadow-2xl" onClick={(e) => e.stopPropagation()} />
             <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === photos.length - 1 ? 0 : lightboxIndex + 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute right-4">
               <ChevronRight size={24} />
             </button>
