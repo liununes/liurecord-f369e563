@@ -283,7 +283,9 @@ const Admin = () => {
     let timeoutId: NodeJS.Timeout;
 
     const performAutoLogout = async () => {
+      const savedEmail = localStorage.getItem("admin_email");
       await supabase.auth.signOut();
+      try { if (savedEmail) localStorage.setItem("admin_email", savedEmail); } catch { /* ignore */ }
       toast.warning("Sua sessão expirou por inatividade.");
       navigate("/admin/login");
     };
@@ -312,7 +314,9 @@ const Admin = () => {
   }, [navigate]);
 
   const handleLogout = async () => {
+    const savedEmail = localStorage.getItem("admin_email");
     await supabase.auth.signOut();
+    try { if (savedEmail) localStorage.setItem("admin_email", savedEmail); } catch { /* ignore */ }
     navigate("/admin/login");
   };
 

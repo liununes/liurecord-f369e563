@@ -10,6 +10,11 @@ const AdminLogin = () => {
   const [email, setEmail] = useState(() => {
     try { return localStorage.getItem("admin_email") || ""; } catch { return ""; }
   });
+
+  const saveEmail = (val: string) => {
+    setEmail(val);
+    try { localStorage.setItem("admin_email", val); } catch { /* ignore */ }
+  };
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -58,7 +63,7 @@ const AdminLogin = () => {
             type="email"
             placeholder="E-mail"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => saveEmail(e.target.value)}
             required
           />
           <Input
