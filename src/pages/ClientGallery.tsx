@@ -81,7 +81,13 @@ const ClientGallery = () => {
     setClient(updatedClient);
     try {
       await updateClients.mutateAsync(updatedClients);
-    } catch {}
+    } catch (err) {
+      toast.error("Erro ao salvar registro de download.");
+      const reverted = client.photos.map((p: any) =>
+        p.id === photo.id ? { ...p, downloaded: false } : p
+      );
+      setClient({ ...client, photos: reverted });
+    }
   };
 
   const downloadPhoto = async (photo: any) => {

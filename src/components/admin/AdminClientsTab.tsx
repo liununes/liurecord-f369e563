@@ -259,6 +259,18 @@ const AdminClientsTab = () => {
     } catch { toast.error("Erro"); }
   };
 
+  const handleToggleDownloaded = async (photoId: string) => {
+    if (!selectedClient) return;
+    const updatedPhotos = selectedClient.photos.map((p: any) =>
+      p.id === photoId ? { ...p, downloaded: !p.downloaded } : p
+    );
+    const updatedClient = { ...selectedClient, photos: updatedPhotos };
+    try {
+      await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
+      setSelectedClient(updatedClient);
+    } catch { toast.error("Erro"); }
+  };
+
   const filtered = clients.filter((c: any) => c.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   if (isLoading) {
@@ -513,12 +525,24 @@ const AdminClientsTab = () => {
                 </div>
                 <CardContent className="p-3 space-y-2">
                   <div className="text-[11px] text-muted-foreground truncate">{photo.filename}</div>
+                  {photo.downloaded && (
+                    <div className="text-[10px] text-green-500 flex items-center gap-1">
+                      <CheckCircle2 size={10} /> Baixada pelo cliente
+                    </div>
+                  )}
                   <div className="flex items-center justify-between border-t border-border/50 pt-2">
                     <div className="flex items-center gap-1.5">
                       <Switch checked={photo.released} onCheckedChange={() => togglePhotoRelease(photo.id, photo.released)} className="h-4 w-7 data-[state=checked]:bg-green-500 scale-75 origin-left" />
                       <span className="text-[10px] text-muted-foreground">Liberar</span>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeletePhoto(photo.id)} className="h-7 w-7 text-destructive"><Trash2 size={13} /></Button>
+                    <div className="flex gap-1">
+                      {photo.downloaded && (
+                        <Button variant="ghost" size="icon" onClick={() => handleToggleDownloaded(photo.id)} className="h-7 w-7 text-amber-400" title="Re-liberar download">
+                          <Download size={13} />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => handleDeletePhoto(photo.id)} className="h-7 w-7 text-destructive"><Trash2 size={13} /></Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
