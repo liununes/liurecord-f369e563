@@ -228,6 +228,17 @@ export function useUpdateClients() {
         );
       if (error) throw error;
     },
+    onMutate: async (clients) => {
+      await qc.cancelQueries({ queryKey: ["clients_data"] });
+      const previousClients = qc.getQueryData<any[]>(["clients_data"]);
+      qc.setQueryData(["clients_data"], clients);
+      return { previousClients };
+    },
+    onError: (_error, _clients, context) => {
+      if (context?.previousClients) {
+        qc.setQueryData(["clients_data"], context.previousClients);
+      }
+    },
     onSuccess: async () => {
       await qc.refetchQueries({ queryKey: ["clients_data"], exact: true });
     },
