@@ -31,6 +31,7 @@ const AdminClientsTab = () => {
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (view !== "edit" || uploading) return;
@@ -41,6 +42,38 @@ const AdminClientsTab = () => {
       return JSON.stringify(updated) === JSON.stringify(current) ? current : updated;
     });
   }, [clients, view, uploading]);
+
+  // Resolve signed URLs for private client-photos bucket previews
+  useEffect(() => {
+    if (!selectedClient?.photos?.length) { setPhotoUrls({}); return; }
+    let cancelled = false;
+    (async () => {
+      const paths = selectedClient.photos
+        .filter((p: any) => p.thumbnail_path && !photoUrls[p.id])
+        .map((p: any) => ({ id: p.id, path: p.thumbnail_path }));
+      if (paths.length === 0) return;
+      const updates: Record<string, string> = {};
+      // Batch by 50 for signed URL creation
+      for (let i = 0; i < paths.length; i += 50) {
+        const chunk = paths.slice(i, i + 50);
+        const { data } = await supabase.storage
+          .from("client-photos")
+          .createSignedUrls(chunk.map((c) => c.path), 3600);
+        if (data) {
+          data.forEach((row: any, idx: number) => {
+            if (row?.signedUrl) updates[chunk[idx].id] = row.signedUrl;
+          });
+        }
+      }
+      if (!cancelled && Object.keys(updates).length) {
+        setPhotoUrls((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedClient?.photos]);
+
+  const resolveThumb = (photo: any): string =>
+    photo.thumbnail_url || photoUrls[photo.id] || "";
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
