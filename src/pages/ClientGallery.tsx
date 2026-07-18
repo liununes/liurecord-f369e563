@@ -20,8 +20,16 @@ const ClientGallery = () => {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
-  const isMutating = useRef(false);
-  const downloadInProgress = useRef<Set<string>>(new Set());
+
+  const clientRef = useRef(client);
+  const clientIdRef = useRef(clientId);
+  const clientsRef = useRef(clients);
+  const maxPhotosRef = useRef(0);
+
+  useEffect(() => { clientRef.current = client; }, [client]);
+  useEffect(() => { clientIdRef.current = clientId; }, [clientId]);
+  useEffect(() => { clientsRef.current = clients; }, [clients]);
+  useEffect(() => { maxPhotosRef.current = client?.max_photos || 0; }, [client?.max_photos]);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -31,7 +39,6 @@ const ClientGallery = () => {
   const hasPendingRequest = pendingRequests.length > 0;
 
   useEffect(() => {
-    if (isMutating.current) return;
     if (clients.length > 0 && clientId) {
       const found = clients.find((c: any) => c.id === clientId);
       if (found) {
@@ -55,33 +62,34 @@ const ClientGallery = () => {
   };
 
   const markDownloaded = useCallback(async (photoId: string): Promise<boolean> => {
-    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
-    const freshClient = freshClients.find((c: any) => c.id === clientId);
+    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]);
+    if (!freshClients) return false;
+
+    const freshClient = freshClients.find((c: any) => c.id === clientIdRef.current);
     if (!freshClient) return false;
 
     const photoData = freshClient.photos?.find((p: any) => p.id === photoId);
     if (photoData?.downloaded) return true;
 
-    isMutating.current = true;
     const newPhotos = (freshClient.photos || []).map((p: any) =>
       p.id === photoId ? { ...p, downloaded: true } : p
     );
     const updatedClient = { ...freshClient, photos: newPhotos };
     const updatedClients = freshClients.map((c: any) => c.id === updatedClient.id ? updatedClient : c);
 
+    queryClient.setQueryData(["clients_data"], updatedClients);
     setClient(updatedClient);
 
     try {
       await updateClients.mutateAsync(updatedClients);
       return true;
-    } catch (err) {
+    } catch {
       toast.error("Erro ao salvar registro de download.");
+      queryClient.setQueryData(["clients_data"], freshClients);
       setClient(freshClient);
       return false;
-    } finally {
-      setTimeout(() => { isMutating.current = false; }, 1500);
     }
-  }, [clients, clientId, queryClient, updateClients]);
+  }, [queryClient, updateClients]);
 
   const downloadPhoto = useCallback(async (photo: any) => {
     if (!photo.original_url) {
@@ -89,75 +97,43 @@ const ClientGallery = () => {
       return;
     }
 
-    if (downloadInProgress.current.has(photo.id)) return;
-
     if (photo.downloaded && !photo.released) {
       toast.error("Essa foto já foi baixada. Aguarde liberação do administrador para baixar novamente.");
       return;
     }
 
-    if (hasReachedLimit && !photo.downloaded && !photo.released) {
-      toast.error(`Limite de ${maxPhotos} foto${maxPhotos !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
-      return;
+    const currentMax = maxPhotosRef.current;
+    if (currentMax > 0 && !photo.downloaded && !photo.released) {
+      const currentClient = clientRef.current;
+      const currentDownloaded = (currentClient?.photos || []).filter((p: any) => p.downloaded).length;
+      if (currentDownloaded >= currentMax) {
+        toast.error(`Limite de ${currentMax} foto${currentMax !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
+        return;
+      }
     }
 
-    downloadInProgress.current.add(photo.id);
-    const fileName = photo.filename || "foto.jpg";
     setDownloadingId(photo.id);
 
     try {
       const saved = await markDownloaded(photo.id);
       if (!saved) {
-        downloadInProgress.current.delete(photo.id);
         setDownloadingId(null);
         return;
       }
 
-      try {
-        const res = await fetch(photo.original_url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const blob = await res.blob();
-        if (blob.size === 0) throw new Error("Arquivo vazio");
+      const fileName = photo.filename || "foto.jpg";
+      const separator = photo.original_url.includes("?") ? "&" : "?";
+      const downloadUrl = `${photo.original_url}${separator}download=${encodeURIComponent(fileName)}`;
+      window.location.href = downloadUrl;
 
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = fileName;
-        a.style.display = "none";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 5000);
-
-        toast.success("Download iniciado.");
-      } catch (fetchErr) {
-        console.error("Fetch falhou, tentando link direto:", fetchErr);
-        try {
-          const a2 = document.createElement("a");
-          a2.href = photo.original_url;
-          a2.download = fileName;
-          a2.target = "_blank";
-          a2.rel = "noopener noreferrer";
-          a2.style.display = "none";
-          document.body.appendChild(a2);
-          a2.click();
-          setTimeout(() => document.body.removeChild(a2), 1000);
-          toast.success("Download iniciado.");
-        } catch {
-          window.location.href = photo.original_url;
-          toast.info("Se o download não iniciar, segure e selecione 'Salvar imagem'.");
-        }
-      }
+      toast.success("Download iniciado.");
     } catch (err) {
-      console.error("Erro geral no download:", err);
+      console.error("Erro no download:", err);
       toast.error("Erro ao processar download. Tente novamente.");
     } finally {
-      downloadInProgress.current.delete(photo.id);
-      setDownloadingId(null);
+      setTimeout(() => setDownloadingId(null), 2000);
     }
-  }, [clients, clientId, hasReachedLimit, maxPhotos, markDownloaded]);
+  }, [markDownloaded]);
 
   const toggleRequest = (photoId: string) => {
     setRequestingIds((prev) => {
@@ -172,17 +148,22 @@ const ClientGallery = () => {
   };
 
   const sendRequest = useCallback(async () => {
-    if (!client || requestingIds.size === 0) return;
+    const currentClient = clientRef.current;
+    const currentClientId = clientIdRef.current;
+    const currentClients = clientsRef.current;
 
-    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || clients;
-    const freshClient = freshClients.find((c: any) => c.id === clientId) || client;
+    if (!currentClient || requestingIds.size === 0) return;
 
-    const newPending = [...new Set([...pendingRequests, ...requestingIds])];
+    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || currentClients;
+    const freshClient = freshClients.find((c: any) => c.id === currentClientId) || currentClient;
+    const currentPending = freshClient.pending_requests || [];
+
+    const newPending = [...new Set([...currentPending, ...requestingIds])];
     const updated = { ...freshClient, pending_requests: newPending };
     const updatedClients = freshClients.map((c: any) => c.id === updated.id ? updated : c);
 
     setSaving(true);
-    isMutating.current = true;
+    queryClient.setQueryData(["clients_data"], updatedClients);
     setClient(updated);
     setRequestingIds(new Set());
 
@@ -190,13 +171,13 @@ const ClientGallery = () => {
       await updateClients.mutateAsync(updatedClients);
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
     } catch {
-      setClient(client);
+      queryClient.setQueryData(["clients_data"], freshClients);
+      setClient(currentClient);
       toast.error("Erro ao enviar solicitação.");
     } finally {
       setSaving(false);
-      setTimeout(() => { isMutating.current = false; }, 1500);
     }
-  }, [client, clients, clientId, requestingIds, pendingRequests, queryClient, updateClients]);
+  }, [requestingIds, queryClient, updateClients]);
 
   const sendWhatsApp = () => {
     const text = `Olá! Concluí a seleção. Tenho ${photos.length} fotos na galeria.`;
