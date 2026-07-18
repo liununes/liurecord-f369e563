@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -122,9 +123,33 @@ const ClientGallery = () => {
       }
 
       const fileName = photo.filename || "foto.jpg";
-      const separator = photo.original_url.includes("?") ? "&" : "?";
-      const downloadUrl = `${photo.original_url}${separator}download=${encodeURIComponent(fileName)}`;
-      window.location.href = downloadUrl;
+      const storagePath = photo.original_url.split("/storage/v1/object/public/media/")[1];
+
+      if (!storagePath) {
+        toast.error("Caminho do arquivo não encontrado.");
+        setDownloadingId(null);
+        return;
+      }
+
+      const { data: blob, error } = await supabase.storage.from("media").download(storagePath);
+      if (error || !blob) {
+        console.error("Supabase download error:", error);
+        toast.error("Erro ao baixar arquivo do servidor.");
+        setDownloadingId(null);
+        return;
+      }
+
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = fileName;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(objectUrl);
+      }, 5000);
 
       toast.success("Download iniciado.");
     } catch (err) {
