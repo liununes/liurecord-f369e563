@@ -609,7 +609,7 @@ const AdminClientsTab = () => {
             {selectedClient.photos.map((photo: any) => (
               <Card key={photo.id} className="bg-card border-border overflow-hidden flex flex-col">
                 <div className="relative aspect-square bg-muted overflow-hidden">
-                  <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
+                  <img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
                   <div className="absolute top-2 left-2 flex gap-1.5">
                     {photo.status === "liked" && <Badge className="bg-rose-600 text-white border-none text-[10px]"><Heart size={10} className="fill-white" /> Escolhida</Badge>}
                     {photo.status === "disliked" && <Badge className="bg-red-600 text-white border-none text-[10px]"><XIcon size={10} /> Não</Badge>}
