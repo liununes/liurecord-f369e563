@@ -135,19 +135,34 @@ export function useDeleteMedia() {
 // ─── Auth helpers ────────────────────────────────────────────────
 
 export function useAdminCheck() {
+  const qc = useQueryClient();
+  // Invalidate admin check on any auth state change so stale `false` results
+  // (from before login) don't persist after signIn.
+  if (typeof window !== "undefined" && !(window as any).__adminCheckAuthBound) {
+    (window as any).__adminCheckAuthBound = true;
+    supabase.auth.onAuthStateChange(() => {
+      qc.invalidateQueries({ queryKey: ["admin_check"] });
+    });
+  }
   return useQuery({
     queryKey: ["admin_check"],
     queryFn: async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user.id)
         .eq("role", "admin")
         .maybeSingle();
+      if (error) {
+        console.error("[useAdminCheck] error:", error);
+        return false;
+      }
       return !!data;
     },
+    staleTime: 0,
+    retry: 1,
   });
 }
 
