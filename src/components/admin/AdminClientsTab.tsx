@@ -233,15 +233,25 @@ const AdminClientsTab = () => {
     } catch { toast.error("Erro"); }
   };
 
+  const removeStorageFiles = async (photo: any) => {
+    // New private bucket files
+    if (photo.storage_path) {
+      await supabase.storage.from("client-photos").remove([photo.storage_path]);
+    }
+    if (photo.thumbnail_path) {
+      await supabase.storage.from("client-photos").remove([photo.thumbnail_path]);
+    }
+    // Legacy public media bucket files
+    const origLegacy = photo.original_url?.split("/storage/v1/object/public/media/")[1];
+    const thumbLegacy = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
+    if (origLegacy) await supabase.storage.from("media").remove([origLegacy]);
+    if (thumbLegacy) await supabase.storage.from("media").remove([thumbLegacy]);
+  };
+
   const handleDeletePhoto = async (photoId: string) => {
     if (!selectedClient || !confirm("Excluir foto?")) return;
     const photo = selectedClient.photos.find((p: any) => p.id === photoId);
-    if (photo) {
-      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
-      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
-      if (origPath) supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
-    }
+    if (photo) await removeStorageFiles(photo);
     const updatedPhotos = selectedClient.photos.filter((p: any) => p.id !== photoId);
     const updatedClient = { ...selectedClient, photos: updatedPhotos };
     try {
@@ -256,10 +266,7 @@ const AdminClientsTab = () => {
     if (!confirm(`Excluir TODAS as ${selectedClient.photos.length} fotos? Esta ação não pode ser desfeita.`)) return;
 
     for (const photo of selectedClient.photos) {
-      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
-      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
-      if (origPath) supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
+      await removeStorageFiles(photo);
     }
 
     const updatedClient = { ...selectedClient, photos: [] };
