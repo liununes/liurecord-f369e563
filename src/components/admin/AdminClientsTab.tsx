@@ -31,6 +31,7 @@ const AdminClientsTab = () => {
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (view !== "edit" || uploading) return;
@@ -41,6 +42,38 @@ const AdminClientsTab = () => {
       return JSON.stringify(updated) === JSON.stringify(current) ? current : updated;
     });
   }, [clients, view, uploading]);
+
+  // Resolve signed URLs for private client-photos bucket previews
+  useEffect(() => {
+    if (!selectedClient?.photos?.length) { setPhotoUrls({}); return; }
+    let cancelled = false;
+    (async () => {
+      const paths = selectedClient.photos
+        .filter((p: any) => p.thumbnail_path && !photoUrls[p.id])
+        .map((p: any) => ({ id: p.id, path: p.thumbnail_path }));
+      if (paths.length === 0) return;
+      const updates: Record<string, string> = {};
+      // Batch by 50 for signed URL creation
+      for (let i = 0; i < paths.length; i += 50) {
+        const chunk = paths.slice(i, i + 50);
+        const { data } = await supabase.storage
+          .from("client-photos")
+          .createSignedUrls(chunk.map((c) => c.path), 3600);
+        if (data) {
+          data.forEach((row: any, idx: number) => {
+            if (row?.signedUrl) updates[chunk[idx].id] = row.signedUrl;
+          });
+        }
+      }
+      if (!cancelled && Object.keys(updates).length) {
+        setPhotoUrls((prev) => ({ ...prev, ...updates }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedClient?.photos]);
+
+  const resolveThumb = (photo: any): string =>
+    photo.thumbnail_url || photoUrls[photo.id] || "";
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -168,20 +201,19 @@ const AdminClientsTab = () => {
         const rand = Math.round(Math.random() * 1e6);
         const safe = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
 
-        const origPath = `clients/${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
-        const { error: e1 } = await supabase.storage.from("media").upload(origPath, file);
+        // Upload to PRIVATE client-photos bucket. Signed URLs are generated server-side.
+        const origPath = `${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
+        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file);
         if (e1) throw e1;
-        const orig = supabase.storage.from("media").getPublicUrl(origPath).data.publicUrl;
 
-        const thumbPath = `clients/${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
-        const { error: e2 } = await supabase.storage.from("media").upload(thumbPath, thumb);
+        const thumbPath = `${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
+        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb);
         if (e2) throw e2;
-        const thumbUrl = supabase.storage.from("media").getPublicUrl(thumbPath).data.publicUrl;
 
         updatedPhotos.push({
           id: `${ts}-${rand}`,
-          original_url: orig,
-          thumbnail_url: thumbUrl,
+          storage_path: origPath,
+          thumbnail_path: thumbPath,
           filename: file.name,
           status: "pending",
           released: false,
@@ -234,15 +266,25 @@ const AdminClientsTab = () => {
     } catch { toast.error("Erro"); }
   };
 
+  const removeStorageFiles = async (photo: any) => {
+    // New private bucket files
+    if (photo.storage_path) {
+      await supabase.storage.from("client-photos").remove([photo.storage_path]);
+    }
+    if (photo.thumbnail_path) {
+      await supabase.storage.from("client-photos").remove([photo.thumbnail_path]);
+    }
+    // Legacy public media bucket files
+    const origLegacy = photo.original_url?.split("/storage/v1/object/public/media/")[1];
+    const thumbLegacy = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
+    if (origLegacy) await supabase.storage.from("media").remove([origLegacy]);
+    if (thumbLegacy) await supabase.storage.from("media").remove([thumbLegacy]);
+  };
+
   const handleDeletePhoto = async (photoId: string) => {
     if (!selectedClient || !confirm("Excluir foto?")) return;
     const photo = selectedClient.photos.find((p: any) => p.id === photoId);
-    if (photo) {
-      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
-      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
-      if (origPath) supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
-    }
+    if (photo) await removeStorageFiles(photo);
     const updatedPhotos = selectedClient.photos.filter((p: any) => p.id !== photoId);
     const updatedClient = { ...selectedClient, photos: updatedPhotos };
     try {
@@ -257,10 +299,7 @@ const AdminClientsTab = () => {
     if (!confirm(`Excluir TODAS as ${selectedClient.photos.length} fotos? Esta ação não pode ser desfeita.`)) return;
 
     for (const photo of selectedClient.photos) {
-      const origPath = photo.original_url?.split("/storage/v1/object/public/media/")[1];
-      const thumbPath = photo.thumbnail_url?.split("/storage/v1/object/public/media/")[1];
-      if (origPath) supabase.storage.from("media").remove([origPath]);
-      if (thumbPath) supabase.storage.from("media").remove([thumbPath]);
+      await removeStorageFiles(photo);
     }
 
     const updatedClient = { ...selectedClient, photos: [] };
@@ -516,7 +555,7 @@ const AdminClientsTab = () => {
                 if (!photo) return null;
                 return (
                   <div key={photoId} className="flex items-center gap-3 bg-card/60 border border-amber-800/30 rounded-lg p-3">
-                    <img src={photo.thumbnail_url} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
+                    <img src={resolveThumb(photo)} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-foreground truncate">{photo.filename}</p>
                       <p className="text-[10px] text-muted-foreground">Solicitado pelo cliente</p>
@@ -570,7 +609,7 @@ const AdminClientsTab = () => {
             {selectedClient.photos.map((photo: any) => (
               <Card key={photo.id} className="bg-card border-border overflow-hidden flex flex-col">
                 <div className="relative aspect-square bg-muted overflow-hidden">
-                  <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
+                  <img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
                   <div className="absolute top-2 left-2 flex gap-1.5">
                     {photo.status === "liked" && <Badge className="bg-rose-600 text-white border-none text-[10px]"><Heart size={10} className="fill-white" /> Escolhida</Badge>}
                     {photo.status === "disliked" && <Badge className="bg-red-600 text-white border-none text-[10px]"><XIcon size={10} /> Não</Badge>}

@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      client_sessions: {
+        Row: {
+          client_id: string
+          created_at: string
+          expires_at: string
+          id: string
+          token: string
+        }
+        Insert: {
+          client_id: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          token: string
+        }
+        Update: {
+          client_id?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          token?: string
+        }
+        Relationships: []
+      }
       portfolio_media: {
         Row: {
           category: string
@@ -118,13 +142,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      has_role: {
-        Args: {
-          _role: Database["public"]["Enums"]["app_role"]
-          _user_id: string
-        }
-        Returns: boolean
-      }
+      [_ in never]: never
     }
     Enums: {
       app_role: "admin" | "user"

@@ -1,7 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { useClients } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
@@ -10,26 +8,20 @@ import { Button } from "@/components/ui/button";
 const ClientGallery = () => {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data: clients = [], isLoading } = useClients();
 
   const [client, setClient] = useState<any>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [nameInput, setNameInput] = useState(() => localStorage.getItem("liurecord_client_name") || "");
   const [passwordInput, setPasswordInput] = useState("");
+  const [authenticating, setAuthenticating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
 
-  const clientRef = useRef(client);
-  const clientIdRef = useRef(clientId);
-  const clientsRef = useRef(clients);
-  const maxPhotosRef = useRef(0);
-
-  useEffect(() => { clientRef.current = client; }, [client]);
-  useEffect(() => { clientIdRef.current = clientId; }, [clientId]);
-  useEffect(() => { clientsRef.current = clients; }, [clients]);
-  useEffect(() => { maxPhotosRef.current = client?.max_photos || 0; }, [client?.max_photos]);
+  const tokenRef = useRef<string | null>(null);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -38,218 +30,155 @@ const ClientGallery = () => {
   const pendingRequests = client?.pending_requests || [];
   const hasPendingRequest = pendingRequests.length > 0;
 
-  useEffect(() => {
-    if (clients.length > 0 && clientId) {
-      const found = clients.find((c: any) => c.id === clientId);
-      if (found) {
-        setClient(found);
-        const sessionAuth = sessionStorage.getItem(`auth_client_${clientId}`);
-        if (sessionAuth === "true") setIsAuthenticated(true);
-      }
+  const loadSession = useCallback(async (token: string) => {
+    tokenRef.current = token;
+    const { data, error } = await supabase.functions.invoke("client-portal", {
+      body: { action: "session", token },
+    });
+    if (error || !data?.client) {
+      tokenRef.current = null;
+      sessionStorage.removeItem(`client_token_${clientId}`);
+      setNeedsPassword(true);
+      setClient(null);
+      setLoading(false);
+      return;
     }
-  }, [clients, clientId]);
+    if (data.client.id !== clientId) {
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    setClient(data.client);
+    setNeedsPassword(false);
+    setLoading(false);
+  }, [clientId]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!clientId) return;
+    const token = sessionStorage.getItem(`client_token_${clientId}`);
+    if (!token) {
+      setNeedsPassword(true);
+      setLoading(false);
+      return;
+    }
+    loadSession(token);
+  }, [clientId, loadSession]);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!client) return;
-    if (passwordInput.trim() === client.password) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem(`auth_client_${client.id}`, "true");
+    if (!nameInput || !passwordInput) { toast.error("Preencha nome e senha."); return; }
+    setAuthenticating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("client-portal", {
+        body: { action: "login", name: nameInput.trim(), password: passwordInput.trim() },
+      });
+      if (error || !data?.token) {
+        toast.error(data?.error || "Nome ou senha incorretos.");
+        setAuthenticating(false);
+        return;
+      }
+      if (data.client.id !== clientId) {
+        toast.error("Essa galeria não pertence a este cliente.");
+        setAuthenticating(false);
+        return;
+      }
+      sessionStorage.setItem(`client_token_${clientId}`, data.token);
+      localStorage.setItem("liurecord_client_name", nameInput.trim());
+      tokenRef.current = data.token;
+      setClient(data.client);
+      setNeedsPassword(false);
       toast.success("Acesso liberado!");
-    } else {
-      toast.error("Senha incorreta.");
+    } catch (err: any) {
+      toast.error("Erro: " + (err?.message || "desconhecido"));
+    } finally {
+      setAuthenticating(false);
     }
   };
 
-  const markDownloaded = useCallback(async (photoId: string): Promise<boolean> => {
-    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]);
-    if (!freshClients) return false;
-
-    const freshClient = freshClients.find((c: any) => c.id === clientIdRef.current);
-    if (!freshClient) return false;
-
-    const photoData = freshClient.photos?.find((p: any) => p.id === photoId);
-    if (photoData?.downloaded) return true;
-
-    const newPhotos = (freshClient.photos || []).map((p: any) =>
-      p.id === photoId ? { ...p, downloaded: true } : p
-    );
-    const updatedClient = { ...freshClient, photos: newPhotos };
-    const updatedClients = freshClients.map((c: any) => c.id === updatedClient.id ? updatedClient : c);
-
-    queryClient.setQueryData(["clients_data"], updatedClients);
-    setClient(updatedClient);
-
-    try {
-      console.log("=== MARK DOWNLOADED START ===");
-      console.log("PAYLOAD:", JSON.stringify({ section_key: "clients", contentLength: updatedClients.length }));
-
-      const { data, error } = await supabase
-        .from("site_content")
-        .upsert(
-          { section_key: "clients", content: updatedClients },
-          { onConflict: "section_key" }
-        )
-        .select();
-
-      console.log("SUPABASE RESPONSE data:", data);
-      console.log("SUPABASE RESPONSE error:", error);
-
-      if (error) {
-        console.error("SUPABASE ERROR FULL:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-        toast.error(`Erro ao salvar: ${error.message} (${error.code})`);
-        queryClient.setQueryData(["clients_data"], freshClients);
-        setClient(freshClient);
-        return false;
-      }
-
-      console.log("=== MARK DOWNLOADED SUCCESS ===");
-      return true;
-    } catch (err) {
-      console.error("=== MARK DOWNLOADED EXCEPTION ===", err);
-      toast.error(`Erro inesperado: ${(err as Error).message}`);
-      queryClient.setQueryData(["clients_data"], freshClients);
-      setClient(freshClient);
-      return false;
-    }
-  }, [queryClient]);
+  const triggerBrowserDownload = (url: string, filename: string) => {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.rel = "noopener";
+    a.target = "_self";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { try { document.body.removeChild(a); } catch { /* noop */ } }, 5000);
+  };
 
   const downloadPhoto = useCallback(async (photo: any) => {
-    if (!photo.original_url) {
-      toast.error("URL da foto não disponível.");
-      return;
-    }
-
+    const token = tokenRef.current;
+    if (!token) return;
     if (photo.downloaded && !photo.released) {
-      toast.error("Essa foto já foi baixada. Aguarde liberação do administrador para baixar novamente.");
+      toast.error("Essa foto já foi baixada. Aguarde liberação para baixar novamente.");
       return;
     }
-
-    const currentMax = maxPhotosRef.current;
-    if (currentMax > 0 && !photo.downloaded && !photo.released) {
-      const currentClient = clientRef.current;
-      const currentDownloaded = (currentClient?.photos || []).filter((p: any) => p.downloaded).length;
-      if (currentDownloaded >= currentMax) {
-        toast.error(`Limite de ${currentMax} foto${currentMax !== 1 ? "s" : ""} atingido. Solicite autorização para baixar mais.`);
-        return;
-      }
-    }
-
     setDownloadingId(photo.id);
-
     try {
-      const saved = await markDownloaded(photo.id);
-      if (!saved) {
+      const { data, error } = await supabase.functions.invoke("client-portal", {
+        body: { action: "mark_downloaded", token, photoId: photo.id },
+      });
+      if (error || !data?.ok) {
+        toast.error(data?.error || "Não foi possível registrar o download.");
         setDownloadingId(null);
         return;
       }
+      // Update local state
+      setClient((c: any) => c ? {
+        ...c,
+        photos: c.photos.map((p: any) => p.id === photo.id ? { ...p, ...data.photo, downloaded: true } : p),
+      } : c);
 
-      const fileName = photo.filename || "foto.jpg";
-      const storagePath = photo.original_url.split("/storage/v1/object/public/media/")[1];
-
-      if (!storagePath) {
-        toast.error("Caminho do arquivo não encontrado.");
+      const signedUrl = data.photo.original_url;
+      if (!signedUrl) {
+        toast.error("URL da foto indisponível.");
         setDownloadingId(null);
         return;
       }
-
-      const { data: blob, error } = await supabase.storage.from("media").download(storagePath);
-      if (error || !blob) {
-        console.error("Supabase download error:", error);
-        toast.error("Erro ao baixar arquivo do servidor.");
-        setDownloadingId(null);
-        return;
-      }
-
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = fileName;
-      a.style.display = "none";
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(objectUrl);
-      }, 5000);
-
+      triggerBrowserDownload(signedUrl, photo.filename || "foto.jpg");
       toast.success("Download iniciado.");
-    } catch (err) {
-      console.error("Erro no download:", err);
-      toast.error("Erro ao processar download. Tente novamente.");
+    } catch (err: any) {
+      toast.error("Erro no download: " + (err?.message || ""));
     } finally {
-      setTimeout(() => setDownloadingId(null), 2000);
+      setTimeout(() => setDownloadingId(null), 1500);
     }
-  }, [markDownloaded]);
+  }, []);
 
   const toggleRequest = (photoId: string) => {
     setRequestingIds((prev) => {
       const next = new Set(prev);
-      if (next.has(photoId)) {
-        next.delete(photoId);
-      } else {
-        next.add(photoId);
-      }
+      if (next.has(photoId)) next.delete(photoId); else next.add(photoId);
       return next;
     });
   };
 
   const sendRequest = useCallback(async () => {
-    const currentClient = clientRef.current;
-    const currentClientId = clientIdRef.current;
-    const currentClients = clientsRef.current;
-
-    if (!currentClient || requestingIds.size === 0) return;
-
-    const freshClients = queryClient.getQueryData<any[]>(["clients_data"]) || currentClients;
-    const freshClient = freshClients.find((c: any) => c.id === currentClientId) || currentClient;
-    const currentPending = freshClient.pending_requests || [];
-
-    const newPending = [...new Set([...currentPending, ...requestingIds])];
-    const updated = { ...freshClient, pending_requests: newPending };
-    const updatedClients = freshClients.map((c: any) => c.id === updated.id ? updated : c);
-
+    const token = tokenRef.current;
+    if (!token || requestingIds.size === 0) return;
     setSaving(true);
-    queryClient.setQueryData(["clients_data"], updatedClients);
-    setClient(updated);
-    setRequestingIds(new Set());
-
     try {
-      const { data, error } = await supabase
-        .from("site_content")
-        .upsert(
-          { section_key: "clients", content: updatedClients },
-          { onConflict: "section_key" }
-        )
-        .select();
-
-      if (error) {
-        console.error("SEND REQUEST ERROR:", { message: error.message, details: error.details, hint: error.hint, code: error.code });
-        throw error;
+      const { data, error } = await supabase.functions.invoke("client-portal", {
+        body: { action: "request", token, photoIds: Array.from(requestingIds) },
+      });
+      if (error || !data?.ok) {
+        toast.error(data?.error || "Erro ao enviar solicitação.");
+        return;
       }
-
-      toast.success("Solicitação enviada! Aguarde autorização do administrador.");
-    } catch (err) {
-      console.error("SEND REQUEST EXCEPTION:", err);
-      queryClient.setQueryData(["clients_data"], freshClients);
-      setClient(currentClient);
-      toast.error("Erro ao enviar solicitação.");
+      setClient((c: any) => c ? { ...c, pending_requests: data.pending_requests } : c);
+      setRequestingIds(new Set());
+      toast.success("Solicitação enviada! Aguarde autorização.");
     } finally {
       setSaving(false);
     }
-  }, [requestingIds, queryClient]);
+  }, [requestingIds]);
 
   const sendWhatsApp = () => {
     const text = `Olá! Concluí a seleção. Tenho ${photos.length} fotos na galeria.`;
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#0c0a09] flex flex-col items-center justify-center text-muted-foreground font-body">
         <Loader2 className="animate-spin text-primary mb-4" size={36} />
@@ -258,7 +187,7 @@ const ClientGallery = () => {
     );
   }
 
-  if (!client) {
+  if (notFound) {
     return (
       <div className="min-h-screen bg-[#0c0a09] flex flex-col items-center justify-center px-4 text-center">
         <h1 className="font-display text-2xl text-foreground mb-2">Galeria não encontrada</h1>
@@ -268,7 +197,7 @@ const ClientGallery = () => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (needsPassword || !client) {
     return (
       <div className="min-h-screen bg-[#0c0a09] flex items-center justify-center px-4 relative overflow-hidden">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-[120px] pointer-events-none" />
@@ -277,9 +206,17 @@ const ClientGallery = () => {
           <h1 className="font-display text-2xl tracking-wider text-gradient-gold text-center mb-1">LIU RECORD</h1>
           <p className="font-display text-lg text-foreground text-center mt-4 mb-1">Acesso à Galeria</p>
           <p className="font-body text-xs text-muted-foreground text-center mb-6">
-            Olá, <span className="text-foreground font-medium">{client.name}</span>. Insira a senha.
+            Informe seu nome e senha para acessar.
           </p>
           <form onSubmit={handleLogin} className="space-y-4">
+            <input
+              type="text"
+              placeholder="Nome"
+              className="w-full bg-card/50 border border-border font-body text-center py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+              value={nameInput}
+              onChange={(e) => setNameInput(e.target.value)}
+              required
+            />
             <input
               type="password"
               autoComplete="new-password"
@@ -287,30 +224,20 @@ const ClientGallery = () => {
               className="w-full bg-card/50 border border-border font-body text-center tracking-widest text-lg py-3 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
-              autoFocus
+              required
             />
-            <Button type="submit" className="w-full bg-gradient-gold text-primary-foreground font-body font-semibold py-5">Acessar</Button>
+            <Button type="submit" disabled={authenticating} className="w-full bg-gradient-gold text-primary-foreground font-body font-semibold py-5">
+              {authenticating ? <><Loader2 className="animate-spin" size={16} /> Acessando...</> : "Acessar"}
+            </Button>
           </form>
         </div>
       </div>
     );
   }
 
-  const canDownload = (photo: any) => {
-    if (!photo.downloaded) return true;
-    if (photo.released) return true;
-    return false;
-  };
-
-  const isLocked = (photo: any) => {
-    if (photo.downloaded && !photo.released) return true;
-    if (hasReachedLimit && !photo.downloaded && !photo.released) return true;
-    return false;
-  };
-
-  const needsRequest = (photo: any) => {
-    return hasReachedLimit && !photo.downloaded && !photo.released;
-  };
+  const canDownload = (photo: any) => !photo.downloaded || photo.released;
+  const isLocked = (photo: any) => (photo.downloaded && !photo.released) || (hasReachedLimit && !photo.downloaded && !photo.released);
+  const needsRequest = (photo: any) => hasReachedLimit && !photo.downloaded && !photo.released;
 
   return (
     <div className="min-h-screen bg-[#0c0a09] text-foreground font-body pb-12">
@@ -344,9 +271,7 @@ const ClientGallery = () => {
             <span>
               Downloads: <strong className="text-foreground">{downloadedCount}</strong> de <strong className="text-foreground">{maxPhotos}</strong> foto{maxPhotos !== 1 ? "s" : ""}
             </span>
-            {hasReachedLimit && (
-              <span className="ml-auto text-amber-500">Limite atingido</span>
-            )}
+            {hasReachedLimit && <span className="ml-auto text-amber-500">Limite atingido</span>}
           </div>
         )}
 
@@ -380,68 +305,36 @@ const ClientGallery = () => {
               const isPhotoCanDownload = canDownload(photo);
               const isNeedRequest = needsRequest(photo);
               return (
-                <div
-                  key={photo.id}
-                  className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30"
-                >
+                <div key={photo.id} className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30">
                   <div className="aspect-square bg-muted relative overflow-hidden cursor-pointer" onClick={() => setLightboxIndex(index)}>
                     <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
                     {isDownloaded && photo.released && (
-                      <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow">
-                        <CheckCircle2 size={10} />
-                      </div>
+                      <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow"><CheckCircle2 size={10} /></div>
                     )}
                     {isDownloaded && !photo.released && (
-                      <div className="absolute top-2 right-2 bg-amber-600 text-white rounded-full p-1 shadow">
-                        <Lock size={10} />
-                      </div>
+                      <div className="absolute top-2 right-2 bg-amber-600 text-white rounded-full p-1 shadow"><Lock size={10} /></div>
                     )}
                     {isPending && (
-                      <div className="absolute top-2 left-2 bg-blue-500 text-white rounded-full p-1 shadow">
-                        <Send size={10} />
-                      </div>
+                      <div className="absolute top-2 left-2 bg-blue-500 text-white rounded-full p-1 shadow"><Send size={10} /></div>
                     )}
                     {isNeedRequest && !isPending && (
-                      <div className="absolute top-2 right-2 bg-zinc-700 text-white rounded-full p-1 shadow">
-                        <Lock size={10} />
-                      </div>
+                      <div className="absolute top-2 right-2 bg-zinc-700 text-white rounded-full p-1 shadow"><Lock size={10} /></div>
                     )}
                   </div>
                   <div className="p-2 flex items-center justify-end bg-card/80 border-t border-border/50">
                     {isNeedRequest && !isPending ? (
-                      <Button
-                        size="sm"
-                        onClick={() => toggleRequest(photo.id)}
-                        disabled={saving}
-                        className={`text-[10px] h-7 px-2 ${
-                          isRequested
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                        }`}
-                      >
-                        {isRequested ? <CheckCircle2 size={11} /> : <Lock size={11} />}{" "}
-                        {isRequested ? "Selecionada" : "Solicitar"}
+                      <Button size="sm" onClick={() => toggleRequest(photo.id)} disabled={saving}
+                        className={`text-[10px] h-7 px-2 ${isRequested ? "bg-primary text-primary-foreground" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"}`}>
+                        {isRequested ? <CheckCircle2 size={11} /> : <Lock size={11} />} {isRequested ? "Selecionada" : "Solicitar"}
                       </Button>
                     ) : isPending && !isDownloaded ? (
-                      <span className="text-[10px] text-blue-400 flex items-center gap-1">
-                        <Send size={10} /> Solicitada
-                      </span>
+                      <span className="text-[10px] text-blue-400 flex items-center gap-1"><Send size={10} /> Solicitada</span>
                     ) : isPhotoLocked && !isPhotoCanDownload ? (
-                      <span className="text-[10px] text-amber-400 flex items-center gap-1">
-                        <Lock size={10} /> Aguardando liberação
-                      </span>
+                      <span className="text-[10px] text-amber-400 flex items-center gap-1"><Lock size={10} /> Aguardando liberação</span>
                     ) : (
-                      <Button
-                        size="sm"
-                        onClick={() => downloadPhoto(photo)}
-                        disabled={downloadingId === photo.id}
-                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2"
-                      >
-                        {downloadingId === photo.id ? (
-                          <Loader2 size={11} className="animate-spin" />
-                        ) : (
-                          <Download size={11} />
-                        )}{" "}
+                      <Button size="sm" onClick={() => downloadPhoto(photo)} disabled={downloadingId === photo.id}
+                        className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2">
+                        {downloadingId === photo.id ? <Loader2 size={11} className="animate-spin" /> : <Download size={11} />}{" "}
                         {downloadingId === photo.id ? "Baixando..." : isDownloaded ? "Baixar novamente" : "Baixar"}
                       </Button>
                     )}
@@ -453,7 +346,6 @@ const ClientGallery = () => {
         )}
       </main>
 
-      {/* LIGHTBOX */}
       {lightboxIndex !== null && photos[lightboxIndex] && (
         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col justify-between" onClick={() => setLightboxIndex(null)}>
           <div className="p-4 flex items-center justify-between text-white bg-gradient-to-b from-black/80 to-transparent">
@@ -461,27 +353,18 @@ const ClientGallery = () => {
               <p className="font-body text-xs text-zinc-400">{photos[lightboxIndex].filename}</p>
               <p className="font-body text-[10px] text-zinc-500">{lightboxIndex + 1} de {photos.length}</p>
             </div>
-            <button onClick={() => setLightboxIndex(null)} className="p-1.5 bg-zinc-900 rounded-full hover:bg-zinc-800 text-zinc-300">
-              <XIcon size={20} />
-            </button>
+            <button onClick={() => setLightboxIndex(null)} className="p-1.5 bg-zinc-900 rounded-full hover:bg-zinc-800 text-zinc-300"><XIcon size={20} /></button>
           </div>
 
           <div className="flex-1 flex items-center justify-center px-4 relative">
-            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === 0 ? photos.length - 1 : lightboxIndex - 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute left-4">
-              <ChevronLeft size={24} />
-            </button>
+            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === 0 ? photos.length - 1 : lightboxIndex - 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute left-4"><ChevronLeft size={24} /></button>
             <img src={photos[lightboxIndex].thumbnail_url} alt="Ampliada" className="max-w-[90%] max-h-[80vh] object-contain rounded shadow-2xl" onClick={(e) => e.stopPropagation()} />
-            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === photos.length - 1 ? 0 : lightboxIndex + 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute right-4">
-              <ChevronRight size={24} />
-            </button>
+            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === photos.length - 1 ? 0 : lightboxIndex + 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute right-4"><ChevronRight size={24} /></button>
           </div>
 
           <div className="p-6 bg-gradient-to-t from-black/85 to-transparent flex items-center justify-center gap-4" onClick={(e) => e.stopPropagation()}>
             {needsRequest(photos[lightboxIndex]) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
-              <Button
-                onClick={() => toggleRequest(photos[lightboxIndex].id)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full"
-              >
+              <Button onClick={() => toggleRequest(photos[lightboxIndex].id)} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full">
                 <Lock size={14} /> Solicitar
               </Button>
             ) : pendingRequests.includes(photos[lightboxIndex].id) ? (
@@ -493,16 +376,9 @@ const ClientGallery = () => {
                 <Lock size={14} /> Aguardando liberação
               </span>
             ) : (
-              <Button
-                onClick={() => downloadPhoto(photos[lightboxIndex])}
-                disabled={downloadingId === photos[lightboxIndex].id}
-                className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full"
-              >
-                {downloadingId === photos[lightboxIndex].id ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Download size={14} />
-                )}{" "}
+              <Button onClick={() => downloadPhoto(photos[lightboxIndex])} disabled={downloadingId === photos[lightboxIndex].id}
+                className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full">
+                {downloadingId === photos[lightboxIndex].id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}{" "}
                 {downloadingId === photos[lightboxIndex].id ? "Baixando..." : photos[lightboxIndex].downloaded ? "Baixar novamente" : "Baixar Original"}
               </Button>
             )}

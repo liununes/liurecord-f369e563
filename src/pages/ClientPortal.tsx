@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useClients } from "@/hooks/useSiteContent";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Lock, Camera, Loader2, Key, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,30 +11,30 @@ import Footer from "@/components/Footer";
 
 const ClientPortal = () => {
   const navigate = useNavigate();
-  const { data: clients = [], isLoading } = useClients();
   const [clientName, setClientName] = useState(() => localStorage.getItem("liurecord_client_name") || "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleAccess = (e: React.FormEvent) => {
+  const handleAccess = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientName || !password) { toast.error("Preencha todos os campos."); return; }
 
     setLoading(true);
-
-    const found = clients.find(
-      (c: any) =>
-        c.name.toLowerCase().trim().includes(clientName.toLowerCase().trim()) &&
-        c.password.trim() === password.trim()
-    );
-
-    if (found) {
+    try {
+      const { data, error } = await supabase.functions.invoke("client-portal", {
+        body: { action: "login", name: clientName.trim(), password: password.trim() },
+      });
+      if (error || !data?.token) {
+        toast.error(data?.error || "Nome ou senha incorretos.");
+        setLoading(false);
+        return;
+      }
       localStorage.setItem("liurecord_client_name", clientName.trim());
-      sessionStorage.setItem(`auth_client_${found.id}`, "true");
-      toast.success(`Bem-vindo, ${found.name}!`);
-      setTimeout(() => navigate(`/galeria/${found.id}`), 800);
-    } else {
-      toast.error("Nome ou senha incorretos.");
+      sessionStorage.setItem(`client_token_${data.client.id}`, data.token);
+      toast.success(`Bem-vindo, ${data.client.name}!`);
+      setTimeout(() => navigate(`/galeria/${data.client.id}`), 400);
+    } catch (err: any) {
+      toast.error("Erro ao acessar: " + (err?.message || "desconhecido"));
       setLoading(false);
     }
   };
@@ -65,7 +65,7 @@ const ClientPortal = () => {
                 <label className="text-xs font-medium flex items-center gap-1.5"><Key size={13} className="text-primary" /> Senha</label>
                 <Input type="password" placeholder="Digite sua senha" className="bg-card/50 border-border" value={password} onChange={(e) => setPassword(e.target.value)} required />
               </div>
-              <Button type="submit" disabled={loading || isLoading} className="w-full bg-gradient-gold text-primary-foreground font-semibold py-5 mt-2 flex items-center justify-center gap-2">
+              <Button type="submit" disabled={loading} className="w-full bg-gradient-gold text-primary-foreground font-semibold py-5 mt-2 flex items-center justify-center gap-2">
                 {loading ? <><Loader2 className="animate-spin" size={16} /> Acessando...</> : <><Lock size={16} /> Entrar na Galeria</>}
               </Button>
             </form>
