@@ -168,20 +168,19 @@ const AdminClientsTab = () => {
         const rand = Math.round(Math.random() * 1e6);
         const safe = file.name.replace(/[^a-zA-Z0-9.]/g, "_");
 
-        const origPath = `clients/${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
-        const { error: e1 } = await supabase.storage.from("media").upload(origPath, file);
+        // Upload to PRIVATE client-photos bucket. Signed URLs are generated server-side.
+        const origPath = `${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
+        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file);
         if (e1) throw e1;
-        const orig = supabase.storage.from("media").getPublicUrl(origPath).data.publicUrl;
 
-        const thumbPath = `clients/${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
-        const { error: e2 } = await supabase.storage.from("media").upload(thumbPath, thumb);
+        const thumbPath = `${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
+        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb);
         if (e2) throw e2;
-        const thumbUrl = supabase.storage.from("media").getPublicUrl(thumbPath).data.publicUrl;
 
         updatedPhotos.push({
           id: `${ts}-${rand}`,
-          original_url: orig,
-          thumbnail_url: thumbUrl,
+          storage_path: origPath,
+          thumbnail_path: thumbPath,
           filename: file.name,
           status: "pending",
           released: false,
