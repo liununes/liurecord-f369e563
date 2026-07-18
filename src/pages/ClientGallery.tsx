@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { useClients, useUpdateClients } from "@/hooks/useSiteContent";
+import { useClients } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock } from "lucide-react";
@@ -12,7 +12,6 @@ const ClientGallery = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: clients = [], isLoading } = useClients();
-  const updateClients = useUpdateClients();
 
   const [client, setClient] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -82,15 +81,43 @@ const ClientGallery = () => {
     setClient(updatedClient);
 
     try {
-      await updateClients.mutateAsync(updatedClients);
+      console.log("=== MARK DOWNLOADED START ===");
+      console.log("PAYLOAD:", JSON.stringify({ section_key: "clients", contentLength: updatedClients.length }));
+
+      const { data, error } = await supabase
+        .from("site_content")
+        .upsert(
+          { section_key: "clients", content: updatedClients },
+          { onConflict: "section_key" }
+        )
+        .select();
+
+      console.log("SUPABASE RESPONSE data:", data);
+      console.log("SUPABASE RESPONSE error:", error);
+
+      if (error) {
+        console.error("SUPABASE ERROR FULL:", {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        });
+        toast.error(`Erro ao salvar: ${error.message} (${error.code})`);
+        queryClient.setQueryData(["clients_data"], freshClients);
+        setClient(freshClient);
+        return false;
+      }
+
+      console.log("=== MARK DOWNLOADED SUCCESS ===");
       return true;
-    } catch {
-      toast.error("Erro ao salvar registro de download.");
+    } catch (err) {
+      console.error("=== MARK DOWNLOADED EXCEPTION ===", err);
+      toast.error(`Erro inesperado: ${(err as Error).message}`);
       queryClient.setQueryData(["clients_data"], freshClients);
       setClient(freshClient);
       return false;
     }
-  }, [queryClient, updateClients]);
+  }, [queryClient]);
 
   const downloadPhoto = useCallback(async (photo: any) => {
     if (!photo.original_url) {
@@ -193,16 +220,29 @@ const ClientGallery = () => {
     setRequestingIds(new Set());
 
     try {
-      await updateClients.mutateAsync(updatedClients);
+      const { data, error } = await supabase
+        .from("site_content")
+        .upsert(
+          { section_key: "clients", content: updatedClients },
+          { onConflict: "section_key" }
+        )
+        .select();
+
+      if (error) {
+        console.error("SEND REQUEST ERROR:", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+        throw error;
+      }
+
       toast.success("Solicitação enviada! Aguarde autorização do administrador.");
-    } catch {
+    } catch (err) {
+      console.error("SEND REQUEST EXCEPTION:", err);
       queryClient.setQueryData(["clients_data"], freshClients);
       setClient(currentClient);
       toast.error("Erro ao enviar solicitação.");
     } finally {
       setSaving(false);
     }
-  }, [requestingIds, queryClient, updateClients]);
+  }, [requestingIds, queryClient]);
 
   const sendWhatsApp = () => {
     const text = `Olá! Concluí a seleção. Tenho ${photos.length} fotos na galeria.`;
