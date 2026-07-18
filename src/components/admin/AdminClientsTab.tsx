@@ -555,7 +555,7 @@ const AdminClientsTab = () => {
                 if (!photo) return null;
                 return (
                   <div key={photoId} className="flex items-center gap-3 bg-card/60 border border-amber-800/30 rounded-lg p-3">
-                    <img src={photo.thumbnail_url} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
+                    <img src={resolveThumb(photo)} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-foreground truncate">{photo.filename}</p>
                       <p className="text-[10px] text-muted-foreground">Solicitado pelo cliente</p>
