@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 
 const AdminClientsTab = () => {
   const { data: clients = [], isLoading } = useClients();
@@ -23,11 +24,15 @@ const AdminClientsTab = () => {
   const [newPassword, setNewPassword] = useState("");
   const [newWatermark, setNewWatermark] = useState("LIU RECORD");
   const [newMaxPhotos, setNewMaxPhotos] = useState("");
+  const [newMaxDownloadsPerPhoto, setNewMaxDownloadsPerPhoto] = useState("2");
+  const [newDownloadTips, setNewDownloadTips] = useState("");
 
   const [editName, setEditName] = useState("");
   const [editPassword, setEditPassword] = useState("");
   const [editWatermark, setEditWatermark] = useState("");
   const [editMaxPhotos, setEditMaxPhotos] = useState("");
+  const [editMaxDownloadsPerPhoto, setEditMaxDownloadsPerPhoto] = useState("");
+  const [editDownloadTips, setEditDownloadTips] = useState("");
   const [showPassword, setShowPassword] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -85,6 +90,8 @@ const AdminClientsTab = () => {
       password: newPassword,
       watermark_text: newWatermark || "LIU RECORD",
       max_photos: newMaxPhotos ? parseInt(newMaxPhotos) : undefined,
+      max_downloads_per_photo: newMaxDownloadsPerPhoto ? parseInt(newMaxDownloadsPerPhoto) : 2,
+      download_tips: newDownloadTips,
       photos: [],
       created_at: new Date().toISOString(),
     };
@@ -92,7 +99,7 @@ const AdminClientsTab = () => {
     try {
       await updateClients.mutateAsync([newClient, ...clients]);
       toast.success("Cliente criado!");
-      setNewName(""); setNewPassword(""); setNewWatermark("LIU RECORD"); setNewMaxPhotos("");
+      setNewName(""); setNewPassword(""); setNewWatermark("LIU RECORD"); setNewMaxPhotos(""); setNewMaxDownloadsPerPhoto("2"); setNewDownloadTips("");
       setShowCreateForm(false);
     } catch (err: any) {
       toast.error("Erro: " + err.message);
@@ -121,6 +128,8 @@ const AdminClientsTab = () => {
     setEditPassword(client.password);
     setEditWatermark(client.watermark_text || "LIU RECORD");
     setEditMaxPhotos(client.max_photos?.toString() || "");
+    setEditMaxDownloadsPerPhoto(client.max_downloads_per_photo?.toString() || "2");
+    setEditDownloadTips(client.download_tips || "");
     setView("edit");
   };
 
@@ -134,6 +143,8 @@ const AdminClientsTab = () => {
       password: editPassword.trim(),
       watermark_text: editWatermark.trim() || "LIU RECORD",
       max_photos: editMaxPhotos ? parseInt(editMaxPhotos) : undefined,
+      max_downloads_per_photo: editMaxDownloadsPerPhoto ? parseInt(editMaxDownloadsPerPhoto) : 2,
+      download_tips: editDownloadTips,
     };
 
     try {
@@ -349,13 +360,11 @@ const AdminClientsTab = () => {
     } catch { toast.error("Erro"); }
   };
 
-  const handleToggleDownloaded = async (photoId: string) => {
+  const handleResetDownload = async (photoId: string) => {
     if (!selectedClient) return;
     const updatedPhotos = selectedClient.photos.map((p: any) =>
       p.id === photoId
-        ? p.downloaded
-          ? { ...p, downloaded: false, downloaded_at: undefined }
-          : { ...p, downloaded: true, downloaded_at: new Date().toISOString() }
+        ? { ...p, downloaded: false, download_count: 0, downloaded_at: undefined }
         : p
     );
     const updatedClient = { ...selectedClient, photos: updatedPhotos };
@@ -363,10 +372,10 @@ const AdminClientsTab = () => {
     setSelectedClient(updatedClient);
     try {
       await updateClients.mutateAsync(clients.map((c: any) => c.id === selectedClient.id ? updatedClient : c));
-      toast.success("Status de download atualizado.");
+      toast.success("Contagem de downloads zerada.");
     } catch {
       setSelectedClient(previousClient);
-      toast.error("Erro");
+      toast.error("Erro ao zerar contagem");
     }
   };
 
@@ -421,7 +430,11 @@ const AdminClientsTab = () => {
                   <Button type="button" variant="outline" onClick={() => setNewPassword(Math.random().toString(36).substring(2, 10))}>Gerar</Button>
                 </div>
                 <Input placeholder="Marca d'água" value={newWatermark} onChange={(e) => setNewWatermark(e.target.value)} />
-                <Input type="number" min="0" placeholder="Limite (0=ilimitado)" value={newMaxPhotos} onChange={(e) => setNewMaxPhotos(e.target.value)} />
+                <div className="flex gap-2">
+                  <Input type="number" min="0" placeholder="Limite de fotos (0=ilimitado)" value={newMaxPhotos} onChange={(e) => setNewMaxPhotos(e.target.value)} />
+                  <Input type="number" min="1" placeholder="Downloads p/ foto" value={newMaxDownloadsPerPhoto} onChange={(e) => setNewMaxDownloadsPerPhoto(e.target.value)} title="Limite de downloads por foto" />
+                </div>
+                <Textarea placeholder="Dicas/Regras de download (Opcional. Deixe em branco para o padrão)" value={newDownloadTips} onChange={(e) => setNewDownloadTips(e.target.value)} className="min-h-[80px]" />
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="ghost" onClick={() => setShowCreateForm(false)}>Cancelar</Button>
                   <Button type="submit" className="bg-gradient-gold">Salvar</Button>
@@ -502,12 +515,14 @@ const AdminClientsTab = () => {
       <Card className="bg-card border-border">
         <CardHeader className="py-4"><CardTitle className="font-display text-base">Configurações</CardTitle></CardHeader>
         <CardContent className="space-y-4 pb-5">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4">
             <Input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Nome" />
             <Input value={editPassword} onChange={(e) => setEditPassword(e.target.value)} placeholder="Senha" />
             <Input value={editWatermark} onChange={(e) => setEditWatermark(e.target.value)} placeholder="Marca d'água" />
-            <Input type="number" min="0" value={editMaxPhotos} onChange={(e) => setEditMaxPhotos(e.target.value)} placeholder="Limite" />
+            <Input type="number" min="0" value={editMaxPhotos} onChange={(e) => setEditMaxPhotos(e.target.value)} placeholder="Limite geral" title="Limite geral de fotos" />
+            <Input type="number" min="1" value={editMaxDownloadsPerPhoto} onChange={(e) => setEditMaxDownloadsPerPhoto(e.target.value)} placeholder="Downloads p/ foto" title="Limite de downloads por foto" />
           </div>
+          <Textarea placeholder="Dicas/Regras de download (Opcional. Deixe em branco para o padrão)" value={editDownloadTips} onChange={(e) => setEditDownloadTips(e.target.value)} className="min-h-[80px]" />
           <div className="flex justify-end"><Button onClick={handleSaveSettings} className="bg-gradient-gold">Salvar</Button></div>
         </CardContent>
       </Card>
@@ -625,9 +640,9 @@ const AdminClientsTab = () => {
                 </div>
                 <CardContent className="p-3 space-y-2">
                   <div className="text-[11px] text-muted-foreground truncate">{photo.filename}</div>
-                  {photo.downloaded && (
+                  {((typeof photo.download_count === 'number' && photo.download_count > 0) || photo.downloaded) && (
                     <div className="text-[10px] text-green-500 flex items-center gap-1">
-                      <CheckCircle2 size={10} /> Baixada pelo cliente
+                      <CheckCircle2 size={10} /> Downloads: {typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0)} / {selectedClient?.max_downloads_per_photo || 2}
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-border/50 pt-2">
@@ -636,8 +651,8 @@ const AdminClientsTab = () => {
                       <span className="text-[10px] text-muted-foreground">Liberar</span>
                     </div>
                     <div className="flex gap-1">
-                      {photo.downloaded && (
-                        <Button variant="ghost" size="icon" onClick={() => handleToggleDownloaded(photo.id)} className="h-7 w-7 text-amber-400" title="Re-liberar download">
+                      {((typeof photo.download_count === 'number' && photo.download_count > 0) || photo.downloaded) && (
+                        <Button variant="ghost" size="icon" onClick={() => handleResetDownload(photo.id)} className="h-7 w-7 text-amber-500" title="Zerar contagem de downloads (Resetar)">
                           <Download size={13} />
                         </Button>
                       )}

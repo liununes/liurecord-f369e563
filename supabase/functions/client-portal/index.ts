@@ -164,9 +164,10 @@ Deno.serve(async (req) => {
       if (!photo) return json({ error: "Foto não encontrada." }, 404);
       
       const downloadCount = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
+      const maxDownloadsPerPhoto = typeof client.max_downloads_per_photo === 'number' ? client.max_downloads_per_photo : 2;
       
-      if (downloadCount >= 2 && !photo.released) {
-        return json({ error: "Limite de 2 downloads atingido." }, 403);
+      if (downloadCount >= maxDownloadsPerPhoto && !photo.released) {
+        return json({ error: `Limite de ${maxDownloadsPerPhoto} downloads atingido.` }, 403);
       }
       
       // Enforce max_photos limit server-side for the first download

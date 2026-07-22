@@ -25,6 +25,8 @@ const ClientGallery = () => {
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
+  const maxDownloadsPerPhoto = client?.max_downloads_per_photo || 2;
+  const downloadTips = client?.download_tips || "";
   const downloadedCount = photos.filter((p: any) => p.downloaded).length;
   const hasReachedLimit = maxPhotos > 0 && downloadedCount >= maxPhotos;
   const pendingRequests = client?.pending_requests || [];
@@ -111,8 +113,8 @@ const ClientGallery = () => {
     const token = tokenRef.current;
     if (!token) return;
     const downloadCount = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
-    if (downloadCount >= 2 && !photo.released) {
-      toast.error("Limite de 2 downloads atingido para esta foto.");
+    if (downloadCount >= maxDownloadsPerPhoto && !photo.released) {
+      toast.error(`Limite de ${maxDownloadsPerPhoto} downloads atingido para esta foto.`);
       return;
     }
     setDownloadingId(photo.id);
@@ -261,12 +263,12 @@ const ClientGallery = () => {
 
   const canDownload = (photo: any) => {
     const count = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
-    if (count >= 2 && !photo.released) return false;
+    if (count >= maxDownloadsPerPhoto && !photo.released) return false;
     return true;
   };
   const isLocked = (photo: any) => {
     const count = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
-    if (count >= 2 && !photo.released) return true;
+    if (count >= maxDownloadsPerPhoto && !photo.released) return true;
     if (hasReachedLimit && count === 0 && !photo.released) return true;
     return false;
   };
@@ -314,14 +316,18 @@ const ClientGallery = () => {
             </div>
             <div className="p-4 rounded-lg border bg-card/20 border-border/50 text-xs font-body text-muted-foreground space-y-2">
               <h3 className="font-semibold text-foreground mb-2 text-sm">Informações sobre seus downloads</h3>
-              <ul className="space-y-1 ml-4 list-disc marker:text-primary/50">
-                <li>Você pode baixar até <strong>{maxPhotos} fotos</strong> desta galeria.</li>
-                <li>Para baixar uma foto, primeiro clique no botão de <strong>Favoritar</strong> (coração).</li>
-                <li>O botão <strong>Download</strong> aparecerá somente após a foto ser favoritada.</li>
-                <li>Cada foto pode ser baixada <strong>até 2 vezes</strong>.</li>
-                <li>O segundo download da mesma foto não consome uma nova vaga do seu limite.</li>
-                <li>Após atingir <strong>2 downloads</strong>, a foto será bloqueada automaticamente.</li>
-              </ul>
+              {downloadTips ? (
+                <div className="whitespace-pre-wrap leading-relaxed">{downloadTips}</div>
+              ) : (
+                <ul className="space-y-1 ml-4 list-disc marker:text-primary/50">
+                  <li>Você pode baixar até <strong>{maxPhotos} fotos</strong> desta galeria.</li>
+                  <li>Para baixar uma foto, primeiro clique no botão de <strong>Favoritar</strong> (coração).</li>
+                  <li>O botão <strong>Download</strong> aparecerá somente após a foto ser favoritada.</li>
+                  <li>Cada foto pode ser baixada <strong>até {maxDownloadsPerPhoto} {maxDownloadsPerPhoto === 1 ? 'vez' : 'vezes'}</strong>.</li>
+                  <li>Os downloads seguintes da mesma foto não consomem uma nova vaga do seu limite geral.</li>
+                  <li>Após atingir <strong>{maxDownloadsPerPhoto} download{maxDownloadsPerPhoto !== 1 ? 's' : ''}</strong>, a foto será bloqueada automaticamente.</li>
+                </ul>
+              )}
             </div>
           </div>
         )}
@@ -366,7 +372,7 @@ const ClientGallery = () => {
                     {isDownloaded && photo.released && (
                       <div className="absolute top-2 right-2 bg-green-500 text-white rounded-full p-1 shadow"><CheckCircle2 size={10} /></div>
                     )}
-                    {isDownloaded && !photo.released && downloadCount < 2 && (
+                    {isDownloaded && !photo.released && downloadCount < maxDownloadsPerPhoto && (
                       <div className="absolute top-2 right-2 bg-amber-600 text-white rounded-full p-1 shadow"><Lock size={10} /></div>
                     )}
                     {isPending && (
@@ -379,10 +385,10 @@ const ClientGallery = () => {
                   <div className="px-2 py-1.5 flex flex-col gap-1.5 bg-card/80 border-t border-border/50">
                     <div className="flex items-center justify-between w-full">
                       <div className="text-[9px] text-muted-foreground font-medium">
-                        {downloadCount >= 2 && !photo.released ? (
-                          <span className="text-amber-500">Downloads: 2/2</span>
+                        {downloadCount >= maxDownloadsPerPhoto && !photo.released ? (
+                          <span className="text-amber-500">Downloads: {maxDownloadsPerPhoto}/{maxDownloadsPerPhoto}</span>
                         ) : (
-                          <span>Downloads: {downloadCount}/2</span>
+                          <span>Downloads: {downloadCount}/{maxDownloadsPerPhoto}</span>
                         )}
                       </div>
                       <div className="flex items-center gap-1.5">
@@ -396,7 +402,7 @@ const ClientGallery = () => {
                           <Heart size={14} className={photo.status === "liked" ? "fill-rose-500" : ""} />
                         </Button>
 
-                        {photo.status === "liked" && downloadCount < 2 && (
+                        {photo.status === "liked" && downloadCount < maxDownloadsPerPhoto && (
                           isNeedRequest && !isPending ? (
                             <Button size="sm" onClick={() => toggleRequest(photo.id)} disabled={saving}
                               className={`text-[10px] h-7 px-2 ${isRequested ? "bg-primary text-primary-foreground" : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"}`}>
@@ -414,7 +420,7 @@ const ClientGallery = () => {
                         )}
                       </div>
                     </div>
-                    {downloadCount >= 2 && !photo.released && (
+                    {downloadCount >= maxDownloadsPerPhoto && !photo.released && (
                       <div className="text-[9px] text-amber-500 text-center bg-amber-500/10 rounded p-1">
                         Você atingiu o limite de downloads desta foto. Solicite um novo download ao fotógrafo.
                       </div>
@@ -455,7 +461,7 @@ const ClientGallery = () => {
               </Button>
               
               {photos[lightboxIndex].status === "liked" && (
-                (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= 2 && !photos[lightboxIndex].released ? (
+                (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= maxDownloadsPerPhoto && !photos[lightboxIndex].released ? (
                   <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-900/50 border border-amber-700 text-amber-400 font-body text-xs">
                     <Lock size={14} /> Limite de downloads atingido
                   </span>
@@ -482,7 +488,7 @@ const ClientGallery = () => {
                 )
               )}
             </div>
-            {photos[lightboxIndex].status === "liked" && (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= 2 && !photos[lightboxIndex].released && (
+            {photos[lightboxIndex].status === "liked" && (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= maxDownloadsPerPhoto && !photos[lightboxIndex].released && (
               <div className="bg-black/80 text-amber-400 text-xs py-2 px-4 rounded-full border border-amber-500/30 pointer-events-auto">
                 Você atingiu o limite de downloads desta foto. Solicite um novo download ao fotógrafo.
               </div>
