@@ -162,29 +162,33 @@ Deno.serve(async (req) => {
       const photoId = String(body?.photoId ?? "");
       const photo = (client.photos || []).find((p: any) => p.id === photoId);
       if (!photo) return json({ error: "Foto não encontrada." }, 404);
-      
+
       const downloadCount = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
-      
-      if (downloadCount >= 2 && !photo.released) {
-        return json({ error: "Limite de 2 downloads atingido." }, 403);
+      const maxDownloadsPerPhoto = typeof client.max_downloads_per_photo === 'number' && client.max_downloads_per_photo > 0
+        ? client.max_downloads_per_photo
+        : 2;
+
+      if (downloadCount >= maxDownloadsPerPhoto && !photo.released) {
+        return json({ error: `Limite de ${maxDownloadsPerPhoto} downloads atingido.` }, 403);
       }
-      
-      // Enforce max_photos limit server-side for the first download
-      const currentDownloaded = (client.photos || []).filter((p: any) => p.downloaded).length;
-      if (
-        typeof client.max_photos === "number" &&
-        client.max_photos > 0 &&
-        downloadCount === 0 &&
-        !photo.released &&
-        currentDownloaded >= client.max_photos
-      ) {
-        return json({ error: "Limite geral atingido." }, 403);
+
+      // Enforce max_photos limit server-side ONLY on the first download of this photo
+      if (downloadCount === 0 && !photo.released) {
+        const currentDownloaded = (client.photos || []).filter((p: any) => p.downloaded).length;
+        if (
+          typeof client.max_photos === "number" &&
+          client.max_photos > 0 &&
+          currentDownloaded >= client.max_photos
+        ) {
+          return json({ error: "Limite geral atingido." }, 403);
+        }
       }
-      
+
       const updatedPhotos = (client.photos || []).map((p: any) => {
         if (p.id === photoId) {
           const currentCount = typeof p.download_count === 'number' ? p.download_count : (p.downloaded ? 1 : 0);
-          return { ...p, downloaded: true, download_count: currentCount + 1, downloaded_at: new Date().toISOString() };
+          const nextCount = currentCount === 0 ? 1 : currentCount + 1;
+          return { ...p, downloaded: true, download_count: nextCount, downloaded_at: new Date().toISOString() };
         }
         return p;
       });
