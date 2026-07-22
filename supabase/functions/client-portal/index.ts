@@ -72,6 +72,7 @@ async function signPhoto(photo: any) {
     status: photo.status,
     released: !!photo.released,
     downloaded: !!photo.downloaded,
+    download_count: typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0),
     downloaded_at: photo.downloaded_at,
   };
   // New style: private bucket paths
@@ -161,22 +162,49 @@ Deno.serve(async (req) => {
       const photoId = String(body?.photoId ?? "");
       const photo = (client.photos || []).find((p: any) => p.id === photoId);
       if (!photo) return json({ error: "Foto não encontrada." }, 404);
-      if (photo.downloaded && !photo.released) {
-        return json({ error: "Já baixada. Aguarde liberação." }, 403);
+      
+      const downloadCount = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
+      
+      if (downloadCount >= 2 && !photo.released) {
+        return json({ error: "Limite de 2 downloads atingido." }, 403);
       }
-      // Enforce max_photos limit server-side
+      
+      // Enforce max_photos limit server-side for the first download
       const currentDownloaded = (client.photos || []).filter((p: any) => p.downloaded).length;
       if (
         typeof client.max_photos === "number" &&
         client.max_photos > 0 &&
-        !photo.downloaded &&
+        downloadCount === 0 &&
         !photo.released &&
         currentDownloaded >= client.max_photos
       ) {
-        return json({ error: "Limite atingido." }, 403);
+        return json({ error: "Limite geral atingido." }, 403);
       }
+      
+      const updatedPhotos = (client.photos || []).map((p: any) => {
+        if (p.id === photoId) {
+          const currentCount = typeof p.download_count === 'number' ? p.download_count : (p.downloaded ? 1 : 0);
+          return { ...p, downloaded: true, download_count: currentCount + 1, downloaded_at: new Date().toISOString() };
+        }
+        return p;
+      });
+      const updatedClient = { ...client, photos: updatedPhotos };
+      const updatedClients = clients.map((c: any) => (c.id === client.id ? updatedClient : c));
+      await saveClients(updatedClients);
+
+      const signed = await signPhoto(updatedPhotos.find((p: any) => p.id === photoId));
+      return json({ ok: true, photo: signed });
+    }
+
+    if (action === "toggle_favorite") {
+      const photoId = String(body?.photoId ?? "");
+      const photo = (client.photos || []).find((p: any) => p.id === photoId);
+      if (!photo) return json({ error: "Foto não encontrada." }, 404);
+      
+      const newStatus = photo.status === "liked" ? "pending" : "liked";
+      
       const updatedPhotos = (client.photos || []).map((p: any) =>
-        p.id === photoId ? { ...p, downloaded: true, downloaded_at: new Date().toISOString() } : p,
+        p.id === photoId ? { ...p, status: newStatus } : p,
       );
       const updatedClient = { ...client, photos: updatedPhotos };
       const updatedClients = clients.map((c: any) => (c.id === client.id ? updatedClient : c));
