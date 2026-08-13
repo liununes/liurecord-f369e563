@@ -15,7 +15,8 @@ import {
   Database,
   ArrowRight,
   Compass,
-  ChevronRight
+  ChevronRight,
+  Radio
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -24,12 +25,14 @@ import AdminThemeTab from "@/components/admin/AdminThemeTab";
 import AdminMediaTab from "@/components/admin/AdminMediaTab";
 import AdminSettingsTab from "@/components/admin/AdminSettingsTab";
 import AdminClientsTab from "@/components/admin/AdminClientsTab";
+import AdminRadioTab from "@/components/admin/AdminRadioTab";
 
 const tabs = [
   { id: "overview", label: "Visão Geral", icon: LayoutDashboard },
   { id: "content", label: "Conteúdo", icon: FileText },
   { id: "theme", label: "Cores / Tema", icon: Palette },
   { id: "media", label: "Mídia", icon: Music },
+  { id: "radio", label: "Rádio", icon: Radio },
   { id: "clients", label: "Clientes", icon: Users },
   { id: "settings", label: "Configurações", icon: Settings },
 ];
@@ -533,6 +536,7 @@ const Admin = () => {
           {activeTab === "content" && <AdminContentTab />}
           {activeTab === "theme" && <AdminThemeTab />}
           {activeTab === "media" && <AdminMediaTab />}
+          {activeTab === "radio" && <AdminRadioTab />}
           {activeTab === "clients" && <AdminClientsTab />}
           {activeTab === "settings" && <AdminSettingsTab />}
         </main>

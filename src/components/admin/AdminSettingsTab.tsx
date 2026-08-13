@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useSiteContent, useUpdateSiteContent } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Save, Upload, Palette, MessageCircle, Image } from "lucide-react";
+import { Save, Upload, Palette, MessageCircle, Image, Radio, Globe, Key, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -171,6 +171,33 @@ const AdminSettingsTab = () => {
         <div>
           <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1">Mensagem padrão do WhatsApp</label>
           <Textarea value={form.whatsapp_message || ""} onChange={(e) => update("whatsapp_message", e.target.value)} rows={2} />
+        </div>
+      </section>
+
+      {/* AZURACAST RADIO */}
+      <section className="bg-card border border-border rounded-lg p-6 space-y-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Radio className="text-primary" size={18} />
+          <h3 className="font-display text-xl tracking-wider text-foreground">Rádio (AzuraCast)</h3>
+        </div>
+        <p className="text-xs text-muted-foreground font-body">Configure a integração com seu servidor AzuraCast para controlar a transmissão da rádio diretamente pelo painel.</p>
+        <div>
+          <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <Globe size={12} /> URL do AzuraCast
+          </label>
+          <Input value={form.azuracast_url || ""} onChange={(e) => update("azuracast_url", e.target.value)} placeholder="https://radio.seudominio.com" />
+        </div>
+        <div>
+          <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <Key size={12} /> API Key
+          </label>
+          <Input value={form.azuracast_api_key || ""} onChange={(e) => update("azuracast_api_key", e.target.value)} placeholder="Sua chave de API do AzuraCast" type="password" />
+        </div>
+        <div>
+          <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
+            <Hash size={12} /> Station ID
+          </label>
+          <Input value={form.azuracast_station_id || ""} onChange={(e) => update("azuracast_station_id", e.target.value)} placeholder="ID da estação (ex: 1)" type="number" />
         </div>
       </section>
 
