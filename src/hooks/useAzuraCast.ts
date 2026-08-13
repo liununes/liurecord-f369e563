@@ -39,6 +39,64 @@ export function useStations() {
   });
 }
 
+export function useUpdateStation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stationId: string) => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Usuário não autenticado.");
+
+      const { data: settingsData } = await supabase
+        .from("site_content")
+        .select("content")
+        .eq("section_key", "settings")
+        .maybeSingle();
+
+      const settings = (settingsData?.content ?? {}) as any;
+      const updatedSettings = { ...settings, azuracast_station_id: stationId };
+
+      const { error } = await supabase
+        .from("site_content")
+        .update({ content: updatedSettings })
+        .eq("section_key", "settings");
+
+      if (error) throw error;
+      return updatedSettings;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["site_content", "settings"] });
+      qc.invalidateQueries({ queryKey: ["azuracast_settings"] });
+      qc.invalidateQueries({ queryKey: ["azuracast_status"] });
+      qc.invalidateQueries({ queryKey: ["azuracast_nowplaying"] });
+      qc.invalidateQueries({ queryKey: ["azuracast_station"] });
+    },
+  });
+}
+
+export function useCreateStation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stationConfig: any) => {
+      return invokeAzuraCast("create_station", { station: stationConfig });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["azuracast_stations"] });
+    },
+  });
+}
+
+export function useDeleteStation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (stationId: number) => {
+      return invokeAzuraCast("delete_station", { station_id: stationId });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["azuracast_stations"] });
+    },
+  });
+}
+
 export function useRadioStatus() {
   return useQuery({
     queryKey: ["azuracast_status"],

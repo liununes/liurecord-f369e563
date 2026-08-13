@@ -210,6 +210,32 @@ Deno.serve(async (req) => {
         return json(result);
       }
 
+      case "create_station": {
+        const stationConfig = body?.station || {};
+        const defaultConfig = {
+          name: stationConfig.name || "Nova Estação",
+          description: stationConfig.description || "",
+          genre: stationConfig.genre || "",
+          url: stationConfig.url || "",
+          mount: stationConfig.mount || "/live",
+          port: stationConfig.port || 8000,
+          is_public: stationConfig.is_public !== false,
+          max_listeners: stationConfig.max_listeners || 0,
+          type: stationConfig.type || "icecast",
+          source_password: stationConfig.source_password || "",
+          admin_password: stationConfig.admin_password || "",
+        };
+        const result = await azuracastRequest(azuracastUrl, azuracastApiKey, `/stations`, "POST", defaultConfig);
+        return json(result);
+      }
+
+      case "delete_station": {
+        const stationToDelete = body?.station_id;
+        if (!stationToDelete) return json({ error: "station_id é obrigatório." }, 400);
+        const result = await azuracastRequest(azuracastUrl, azuracastApiKey, `/station/${stationToDelete}`, "DELETE");
+        return json(result);
+      }
+
       default:
         return json({ error: `Ação desconhecida: ${action}` }, 400);
     }

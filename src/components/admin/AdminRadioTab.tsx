@@ -1,4 +1,5 @@
-import { useRadioStatus, useNowPlaying, useStationInfo, useRadioActions, useAzuraCastSettings, useStations } from "@/hooks/useAzuraCast";
+import { useRadioStatus, useNowPlaying, useStationInfo, useRadioActions, useAzuraCastSettings, useStations, useUpdateStation, useCreateStation, useDeleteStation } from "@/hooks/useAzuraCast";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
   Radio,
@@ -15,10 +16,14 @@ import {
   AlertTriangle,
   Settings,
   ExternalLink,
+  Check,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 const AdminRadioTab = () => {
   const { data: statusData, isLoading: statusLoading, error: statusError } = useRadioStatus();
@@ -26,7 +31,74 @@ const AdminRadioTab = () => {
   const { data: stationData } = useStationInfo();
   const { data: azuracastSettings } = useAzuraCastSettings();
   const { data: stationsData } = useStations();
+  const updateStation = useUpdateStation();
+  const createStation = useCreateStation();
+  const deleteStation = useDeleteStation();
   const actions = useRadioActions();
+
+  const [showCreateStation, setShowCreateStation] = useState(false);
+  const [newStationName, setNewStationName] = useState("");
+  const [newStationPort, setNewStationPort] = useState("8000");
+  const [newStationMount, setNewStationMount] = useState("/live");
+  const [newStationGenre, setNewStationGenre] = useState("");
+  const [newStationDescription, setNewStationDescription] = useState("");
+
+  const handleSelectStation = async (stationId: number) => {
+    try {
+      await updateStation.mutateAsync(stationId.toString());
+      toast.success(`Estação ${stationId} selecionada!`);
+    } catch (err: any) {
+      toast.error("Erro ao selecionar estação: " + err.message);
+    }
+  };
+
+  const handleCreateStation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStationName) {
+      toast.error("Preencha o nome da estação.");
+      return;
+    }
+
+    try {
+      const result = await createStation.mutateAsync({
+        name: newStationName,
+        port: parseInt(newStationPort) || 8000,
+        mount: newStationMount || "/live",
+        genre: newStationGenre,
+        description: newStationDescription,
+        is_public: true,
+      });
+
+      if (result?.data?.id) {
+        await updateStation.mutateAsync(result.data.id.toString());
+        toast.success(`Estação "${newStationName}" criada e selecionada!`);
+      } else {
+        toast.success(`Estação "${newStationName}" criada!`);
+      }
+
+      setNewStationName("");
+      setNewStationPort("8000");
+      setNewStationMount("/live");
+      setNewStationGenre("");
+      setNewStationDescription("");
+      setShowCreateStation(false);
+    } catch (err: any) {
+      toast.error("Erro ao criar estação: " + err.message);
+    }
+  };
+
+  const handleDeleteStation = async (stationId: number, stationName: string) => {
+    if (!confirm(`Excluir a estação "${stationName}"? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    try {
+      await deleteStation.mutateAsync(stationId);
+      toast.success(`Estação "${stationName}" excluída!`);
+    } catch (err: any) {
+      toast.error("Erro ao excluir estação: " + err.message);
+    }
+  };
 
   const backendRunning = statusData?.data?.liquidsoap === "running";
   const frontendRunning = statusData?.data?.icecast === "running" || statusData?.data?.shoutcast === "running";
@@ -191,37 +263,143 @@ const AdminRadioTab = () => {
       </Card>
 
       {/* Stations List */}
-      {stationsData?.data && Array.isArray(stationsData.data) && stationsData.data.length > 0 && (
+      {stationsData?.data && Array.isArray(stationsData.data) && (
         <Card className="bg-card border-border">
           <CardHeader className="py-4">
-            <CardTitle className="font-display text-base flex items-center gap-2">
-              <Radio size={16} className="text-primary" /> Estações Disponíveis
-            </CardTitle>
-            <CardDescription className="font-body text-xs text-muted-foreground">
-              Lista de todas as estações configuradas no AzuraCast.
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="font-display text-base flex items-center gap-2">
+                  <Radio size={16} className="text-primary" /> Estações Disponíveis
+                </CardTitle>
+                <CardDescription className="font-body text-xs text-muted-foreground">
+                  Selecione qual estação controlar ou crie uma nova.
+                </CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowCreateStation(!showCreateStation)}
+                className="text-xs flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Nova Estação
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="pb-5">
-            <div className="space-y-2">
-              {stationsData.data.map((station: any) => (
-                <div key={station.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${station.is_public ? "bg-emerald-950/30" : "bg-yellow-950/30"}`}>
-                      <Radio size={14} className={station.is_public ? "text-emerald-400" : "text-yellow-400"} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-foreground">{station.name}</p>
-                      <p className="text-[10px] text-muted-foreground font-body">
-                        ID: {station.id} · Porta: {station.port} · {station.is_public ? "Pública" : "Privada"}
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant={station.id == azuracastSettings?.azuracast_station_id ? "default" : "secondary"}>
-                    {station.id == azuracastSettings?.azuracast_station_id ? "Selecionada" : `ID ${station.id}`}
-                  </Badge>
+            {/* Create Station Form */}
+            {showCreateStation && (
+              <form onSubmit={handleCreateStation} className="mb-4 p-4 bg-secondary/30 rounded-lg space-y-3">
+                <h4 className="text-sm font-semibold text-foreground">Criar Nova Estação</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input 
+                    placeholder="Nome da estação" 
+                    value={newStationName} 
+                    onChange={(e) => setNewStationName(e.target.value)} 
+                    required 
+                  />
+                  <Input 
+                    type="number" 
+                    placeholder="Porta (ex: 8000)" 
+                    value={newStationPort} 
+                    onChange={(e) => setNewStationPort(e.target.value)} 
+                  />
+                  <Input 
+                    placeholder="Mount point (ex: /live)" 
+                    value={newStationMount} 
+                    onChange={(e) => setNewStationMount(e.target.value)} 
+                  />
+                  <Input 
+                    placeholder="Gênero (ex: Pop, Rock)" 
+                    value={newStationGenre} 
+                    onChange={(e) => setNewStationGenre(e.target.value)} 
+                  />
                 </div>
-              ))}
-            </div>
+                <Input 
+                  placeholder="Descrição (opcional)" 
+                  value={newStationDescription} 
+                  onChange={(e) => setNewStationDescription(e.target.value)} 
+                />
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    type="button" 
+                    variant="ghost" 
+                    onClick={() => setShowCreateStation(false)}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    type="submit" 
+                    className="bg-gradient-gold"
+                    disabled={createStation.isPending}
+                  >
+                    {createStation.isPending ? "Criando..." : "Criar Estação"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* Stations List */}
+            {stationsData.data.length > 0 ? (
+              <div className="space-y-2">
+                {stationsData.data.map((station: any) => {
+                  const isSelected = station.id?.toString() === azuracastSettings?.azuracast_station_id?.toString();
+                  return (
+                    <div 
+                      key={station.id} 
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                        isSelected 
+                          ? "bg-primary/10 border border-primary/30" 
+                          : "bg-secondary/30 hover:bg-secondary/50"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${station.is_public ? "bg-emerald-950/30" : "bg-yellow-950/30"}`}>
+                          <Radio size={14} className={station.is_public ? "text-emerald-400" : "text-yellow-400"} />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{station.name}</p>
+                          <p className="text-[10px] text-muted-foreground font-body">
+                            ID: {station.id} · Porta: {station.port} · {station.is_public ? "Pública" : "Privada"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {isSelected ? (
+                          <Badge className="bg-primary text-primary-foreground gap-1">
+                            <Check size={12} /> Selecionada
+                          </Badge>
+                        ) : (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleSelectStation(station.id)}
+                              disabled={updateStation.isPending}
+                              className="text-xs"
+                            >
+                              Selecionar
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => handleDeleteStation(station.id, station.name)}
+                              disabled={deleteStation.isPending}
+                              className="h-7 w-7 text-destructive"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                Nenhuma estação encontrada no AzuraCast. Crie uma nova estação acima.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
