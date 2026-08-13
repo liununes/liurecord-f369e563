@@ -1,4 +1,4 @@
-import { useRadioStatus, useNowPlaying, useStationInfo, useRadioActions } from "@/hooks/useAzuraCast";
+import { useRadioStatus, useNowPlaying, useStationInfo, useRadioActions, useAzuraCastSettings, useStations } from "@/hooks/useAzuraCast";
 import { toast } from "sonner";
 import {
   Radio,
@@ -24,6 +24,8 @@ const AdminRadioTab = () => {
   const { data: statusData, isLoading: statusLoading, error: statusError } = useRadioStatus();
   const { data: npData, isLoading: npLoading } = useNowPlaying();
   const { data: stationData } = useStationInfo();
+  const { data: azuracastSettings } = useAzuraCastSettings();
+  const { data: stationsData } = useStations();
   const actions = useRadioActions();
 
   const backendRunning = statusData?.data?.liquidsoap === "running";
@@ -35,8 +37,8 @@ const AdminRadioTab = () => {
   const songArtist = np?.song?.artist || "—";
   const songAlbum = np?.song?.album || "";
   const listeners = np?.listeners?.current ?? 0;
-  const listenersMax = np?.listeners?.unique ?? 0;
-  const uptime = np?.current_song?.duration ?? null;
+  const listenersTotal = np?.listeners?.total ?? 0;
+  const listenersUnique = np?.listeners?.unique ?? 0;
 
   const handleAction = async (fn: () => Promise<any>, label: string) => {
     try {
@@ -135,7 +137,8 @@ const AdminRadioTab = () => {
             </div>
             <div>
               <p className="text-[10px] uppercase text-muted-foreground font-body tracking-wider">Ouvintes</p>
-              <p className="text-sm font-semibold text-foreground">{listeners}</p>
+              <p className="text-sm font-semibold text-foreground">{listeners} agora</p>
+              <p className="text-[10px] text-muted-foreground font-body">{listenersTotal} total · {listenersUnique} únicos</p>
             </div>
           </CardContent>
         </Card>
@@ -176,7 +179,7 @@ const AdminRadioTab = () => {
                 {songAlbum && <p className="text-xs text-muted-foreground/70 truncate italic">{songAlbum}</p>}
                 {np.listeners && (
                   <p className="text-[10px] text-muted-foreground font-body">
-                    {np.listeners.current} ouvinte(s) agora · {np.listeners.unique} total
+                    {np.listeners.current} ouvinte(s) agora · {np.listeners.total} total · {np.listeners.unique} únicos
                   </p>
                 )}
               </div>
@@ -186,6 +189,42 @@ const AdminRadioTab = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Stations List */}
+      {stationsData?.data && Array.isArray(stationsData.data) && stationsData.data.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="py-4">
+            <CardTitle className="font-display text-base flex items-center gap-2">
+              <Radio size={16} className="text-primary" /> Estações Disponíveis
+            </CardTitle>
+            <CardDescription className="font-body text-xs text-muted-foreground">
+              Lista de todas as estações configuradas no AzuraCast.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pb-5">
+            <div className="space-y-2">
+              {stationsData.data.map((station: any) => (
+                <div key={station.id} className="flex items-center justify-between p-3 bg-secondary/30 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${station.is_public ? "bg-emerald-950/30" : "bg-yellow-950/30"}`}>
+                      <Radio size={14} className={station.is_public ? "text-emerald-400" : "text-yellow-400"} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">{station.name}</p>
+                      <p className="text-[10px] text-muted-foreground font-body">
+                        ID: {station.id} · Porta: {station.port} · {station.is_public ? "Pública" : "Privada"}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant={station.id == azuracastSettings?.azuracast_station_id ? "default" : "secondary"}>
+                    {station.id == azuracastSettings?.azuracast_station_id ? "Selecionada" : `ID ${station.id}`}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Controls */}
       <Card className="bg-card border-border">
@@ -282,14 +321,16 @@ const AdminRadioTab = () => {
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
-        <a
-          href={stationData?.data?.short_name ? `#/admin` : "#"}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-body"
-        >
-          <ExternalLink size={12} /> Abrir Painel AzuraCast
-        </a>
+        {azuracastSettings?.azuracast_url && (
+          <a
+            href={azuracastSettings.azuracast_url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-body"
+          >
+            <ExternalLink size={12} /> Abrir Painel AzuraCast
+          </a>
+        )}
       </div>
     </div>
   );

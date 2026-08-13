@@ -14,7 +14,18 @@ export function useSiteContent(sectionKey: string) {
         .eq("section_key", sectionKey)
         .single();
       if (error) throw error;
-      return data?.content;
+      
+      const content = data?.content as any;
+      if (sectionKey === "settings" && content?.azuracast_api_key?.startsWith("enc:")) {
+        try {
+          const decrypted = await decryptData(content.azuracast_api_key.slice(4), "liu_record_azuracast_vault");
+          content.azuracast_api_key_decrypted = decrypted;
+        } catch {
+          content.azuracast_api_key_decrypted = "";
+        }
+      }
+      
+      return content;
     },
   });
 }

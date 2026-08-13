@@ -2,12 +2,41 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 async function invokeAzuraCast(action: string, extra?: Record<string, unknown>) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session?.access_token) throw new Error("Usuário não autenticado.");
+
   const { data, error } = await supabase.functions.invoke("azuracast-proxy", {
     body: { action, ...extra },
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
   });
   if (error) throw new Error(error.message || "Erro na comunicação com o AzuraCast.");
   if (data?.error) throw new Error(data.error + (data.details ? ` — ${JSON.stringify(data.details)}` : ""));
   return data;
+}
+
+export function useAzuraCastSettings() {
+  return useQuery({
+    queryKey: ["azuracast_settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("site_content")
+        .select("content")
+        .eq("section_key", "settings")
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.content ?? {}) as any;
+    },
+  });
+}
+
+export function useStations() {
+  return useQuery({
+    queryKey: ["azuracast_stations"],
+    queryFn: () => invokeAzuraCast("stations"),
+    retry: 1,
+  });
 }
 
 export function useRadioStatus() {

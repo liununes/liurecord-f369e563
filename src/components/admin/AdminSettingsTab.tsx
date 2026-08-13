@@ -1,11 +1,14 @@
 import { useState, useEffect } from "react";
 import { useSiteContent, useUpdateSiteContent } from "@/hooks/useSiteContent";
 import { supabase } from "@/integrations/supabase/client";
+import { encryptData, decryptData } from "@/lib/crypto";
 import { toast } from "sonner";
 import { Save, Upload, Palette, MessageCircle, Image, Radio, Globe, Key, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+
+const ENCRYPTION_KEY = "liu_record_azuracast_vault";
 
 const AdminSettingsTab = () => {
   const { data: settings, isLoading } = useSiteContent("settings");
@@ -18,6 +21,16 @@ const AdminSettingsTab = () => {
   useEffect(() => {
     if (settings) {
       const s = typeof settings === "string" ? JSON.parse(settings) : settings;
+      
+      if (s.azuracast_api_key?.startsWith("enc:")) {
+        try {
+          const decrypted = decryptData(s.azuracast_api_key.slice(4), ENCRYPTION_KEY);
+          s.azuracast_api_key_decrypted = decrypted;
+        } catch {
+          s.azuracast_api_key_decrypted = "";
+        }
+      }
+      
       setForm(s);
       if (s.logo_url) setLogoPreview(s.logo_url);
       if (s.background_type === "image" && s.background_value) setBgPreview(s.background_value);
@@ -26,7 +39,14 @@ const AdminSettingsTab = () => {
 
   const handleSave = async () => {
     try {
-      await updateMutation.mutateAsync({ sectionKey: "settings", content: form });
+      const contentToSave = { ...form };
+      
+      if (contentToSave.azuracast_api_key && !contentToSave.azuracast_api_key.startsWith("enc:")) {
+        const encrypted = await encryptData(contentToSave.azuracast_api_key, ENCRYPTION_KEY);
+        contentToSave.azuracast_api_key = `enc:${encrypted}`;
+      }
+      
+      await updateMutation.mutateAsync({ sectionKey: "settings", content: contentToSave });
       toast.success("Configurações salvas!");
     } catch {
       toast.error("Erro ao salvar.");
@@ -191,7 +211,15 @@ const AdminSettingsTab = () => {
           <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">
             <Key size={12} /> API Key
           </label>
-          <Input value={form.azuracast_api_key || ""} onChange={(e) => update("azuracast_api_key", e.target.value)} placeholder="Sua chave de API do AzuraCast" type="password" />
+          <Input 
+            value={form.azuracast_api_key_decrypted || form.azuracast_api_key || ""} 
+            onChange={(e) => update("azuracast_api_key", e.target.value)} 
+            placeholder="Sua chave de API do AzuraCast" 
+            type="password" 
+          />
+          {form.azuracast_api_key?.startsWith("enc:") && (
+            <p className="text-[10px] text-emerald-500 font-body mt-1">✓ Chave criptografada no banco de dados</p>
+          )}
         </div>
         <div>
           <label className="block text-xs font-body text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1.5">

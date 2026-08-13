@@ -1,13 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://hokametiwanbvsyjsavl.supabase.co",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const ENCRYPTION_KEY = Deno.env.get("AZURACAST_ENCRYPTION_KEY") || "liu_record_azuracast_vault";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -20,6 +21,24 @@ function json(body: unknown, status = 200) {
   });
 }
 
+async function verifyAuth(req: Request): Promise<{ userId: string; isAdmin: boolean } | null> {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.replace("Bearer ", "");
+  const { data: { user }, error } = await admin.auth.getUser(token);
+  if (error || !user) return null;
+
+  const { data: roleData } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("role", "admin")
+    .maybeSingle();
+
+  return { userId: user.id, isAdmin: !!roleData };
+}
+
 async function loadSettings() {
   const { data, error } = await admin
     .from("site_content")
@@ -28,6 +47,57 @@ async function loadSettings() {
     .maybeSingle();
   if (error) throw error;
   return (data?.content ?? {}) as any;
+}
+
+const SALT = new Uint8Array([82, 101, 99, 111, 114, 100, 76, 105, 117, 83, 101, 99, 114, 101, 116, 83]);
+
+async function getKey(password: string) {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(password),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"]
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: "PBKDF2",
+      salt: SALT,
+      iterations: 1000,
+      hash: "SHA-256",
+    },
+    keyMaterial,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function decryptApiKey(encryptedBase64: string): Promise<string> {
+  try {
+    const dec = new TextDecoder();
+    const binary = atob(encryptedBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    
+    const iv = bytes.slice(0, 12);
+    const encrypted = bytes.slice(12);
+    
+    const key = await getKey(ENCRYPTION_KEY);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: iv },
+      key,
+      encrypted
+    );
+    
+    return dec.decode(decrypted);
+  } catch (e) {
+    console.error("Decryption failed:", e);
+    throw new Error("Erro ao descriptografar API Key");
+  }
 }
 
 async function azuracastRequest(baseUrl: string, apiKey: string, path: string, method = "GET", body?: unknown) {
@@ -58,19 +128,30 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const auth = await verifyAuth(req);
+    if (!auth || !auth.isAdmin) {
+      return json({ error: "Acesso negado. Apenas administradores podem acessar." }, 403);
+    }
+
     const body = await req.json().catch(() => ({}));
     const action = body?.action as string | undefined;
     if (!action) return json({ error: "action é obrigatório." }, 400);
 
     const settings = await loadSettings();
     const azuracastUrl = settings.azuracast_url;
-    const azuracastApiKey = settings.azuracast_api_key;
+    const azuracastApiKeyRaw = settings.azuracast_api_key;
     const azuracastStationId = settings.azuracast_station_id;
 
-    if (!azuracastUrl || !azuracastApiKey) {
+    if (!azuracastUrl || !azuracastApiKeyRaw) {
       return json({ error: "Configurações do AzuraCast não preenchidas. Vá em Configurações > Rádio." }, 400);
     }
 
+    let azuracastApiKey: string;
+    if (azuracastApiKeyRaw.startsWith("enc:")) {
+      azuracastApiKey = await decryptApiKey(azuracastApiKeyRaw.slice(4));
+    } else {
+      azuracastApiKey = azuracastApiKeyRaw;
+    }
     const stationId = azuracastStationId || 1;
 
     switch (action) {
