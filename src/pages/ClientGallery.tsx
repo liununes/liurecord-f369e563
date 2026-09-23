@@ -146,7 +146,7 @@ const ClientGallery = () => {
     } finally {
       setTimeout(() => setDownloadingId(null), 1500);
     }
-  }, []);
+  }, [maxDownloadsPerPhoto]);
 
   const toggleFavorite = useCallback(async (photoId: string) => {
     const token = tokenRef.current;

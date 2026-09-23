@@ -12,6 +12,17 @@ import RequireAdmin from "./components/RequireAdmin";
 import ClientGallery from "./pages/ClientGallery";
 import ClientPortal from "./pages/ClientPortal";
 
+// Normalize documented direct paths before HashRouter mounts. Static hosting
+// serves the app shell for these URLs, but HashRouter only reads the hash.
+function normalizeDirectRoute() {
+  if (window.location.hash || window.location.pathname === "/") return;
+  const knownRoute = /^(\/admin(?:\/login)?|\/clientes|\/galeria\/[^/]+)$/.test(window.location.pathname);
+  if (!knownRoute) return;
+  window.history.replaceState(null, "", `/#${window.location.pathname}${window.location.search}`);
+}
+
+normalizeDirectRoute();
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -75,7 +75,7 @@ const AdminClientsTab = () => {
       }
     })();
     return () => { cancelled = true; };
-  }, [selectedClient?.photos]);
+  }, [selectedClient?.photos, photoUrls]);
 
   const resolveThumb = (photo: any): string =>
     photo.thumbnail_url || photoUrls[photo.id] || "";

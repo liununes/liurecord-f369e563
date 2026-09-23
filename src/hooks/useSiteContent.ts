@@ -158,6 +158,7 @@ export function useAdminCheck(enabled = true) {
         .select("role")
         .eq("user_id", user.id)
         .eq("role", "admin")
+        .limit(1)
         .maybeSingle();
       if (error) {
         console.error("[useAdminCheck] error:", error);
