@@ -1,1 +1,5 @@
 project_id = "hokametiwanbvsyjsavl"
+
+# O portal usa um token próprio; o login inicial precisa ser anônimo.
+[functions.client-portal]
+verify_jwt = false

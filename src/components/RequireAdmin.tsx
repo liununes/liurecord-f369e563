@@ -10,7 +10,7 @@ const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
   const navigate = useNavigate();
   const [sessionChecked, setSessionChecked] = useState(false);
   const [userEmail, setUserEmail] = useState<string | undefined>(undefined);
-  const { data: isAdmin, isLoading } = useAdminCheck();
+  const { data: isAdmin, isLoading, isError, refetch } = useAdminCheck(sessionChecked);
 
   useEffect(() => {
     let mounted = true;
@@ -40,6 +40,19 @@ const RequireAdmin = ({ children }: { children: React.ReactNode }) => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground font-body">Carregando...</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center">
+          <Settings className="mx-auto text-muted-foreground mb-4" size={48} />
+          <h1 className="font-display text-3xl text-foreground mb-2">Não foi possível validar o acesso</h1>
+          <p className="font-body text-muted-foreground mb-6">Verifique sua conexão e tente novamente.</p>
+          <Button variant="outline" onClick={() => refetch()}>Tentar novamente</Button>
+        </div>
       </div>
     );
   }

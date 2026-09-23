@@ -118,7 +118,10 @@ const AdminClientsTab = () => {
   };
 
   const copyLink = (id: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/galeria/${id}`);
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.hash = `/galeria/${id}`;
+    navigator.clipboard.writeText(url.toString());
     toast.success("Link copiado!");
   };
 
@@ -508,7 +511,12 @@ const AdminClientsTab = () => {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => copyLink(selectedClient.id)} className="text-xs flex items-center gap-1.5"><LinkIcon size={14} /> Link</Button>
-          <Button variant="outline" size="sm" onClick={() => window.open(`/galeria/${selectedClient.id}`, "_blank")} className="text-xs bg-secondary">Ver como Cliente</Button>
+          <Button variant="outline" size="sm" onClick={() => {
+            const url = new URL(window.location.href);
+            url.search = "";
+            url.hash = `/galeria/${selectedClient.id}`;
+            window.open(url.toString(), "_blank");
+          }} className="text-xs bg-secondary">Ver como Cliente</Button>
         </div>
       </div>
 

@@ -1,44 +1,42 @@
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useSiteContent } from "@/hooks/useSiteContent";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { data: settings } = useSiteContent("settings");
   const s = (settings as any) || {};
   const location = useLocation();
-
   const isHome = location.pathname === "/";
-
   const navItems = [
-    { label: "Início", href: isHome ? "#inicio" : "/#inicio" },
-    { label: "Serviços", href: isHome ? "#servicos" : "/#servicos" },
-    { label: "Portfólio", href: isHome ? "#portfolio" : "/#portfolio" },
-    { label: "Contato", href: isHome ? "#contato" : "/#contato" },
+    { label: "Início", href: isHome ? "/#inicio" : "/#inicio" },
+    { label: "Serviços", href: isHome ? "/#servicos" : "/#servicos" },
+    { label: "Portfólio", href: isHome ? "/#portfolio" : "/#portfolio" },
+    { label: "Contato", href: isHome ? "/#contato" : "/#contato" },
     { label: "Clientes", href: "/clientes" },
   ];
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b border-border">
       <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-        <a href={isHome ? "#inicio" : "/"} className="flex items-center gap-2">
+        <Link to={isHome ? "/#inicio" : "/"} className="flex items-center gap-2">
           {s.logo_url ? (
             <img src={s.logo_url} alt="Logo" className="h-10 object-contain" />
           ) : (
             <span className="font-display text-3xl tracking-wider text-gradient-gold">LIU RECORD</span>
           )}
-        </a>
+        </Link>
 
         <nav className="hidden md:flex items-center gap-8">
           {navItems.map((item) => (
-            <a
+            <Link
               key={item.href}
-              href={item.href}
+              to={item.href}
               className="font-body text-sm tracking-widest uppercase text-muted-foreground hover:text-primary transition-colors duration-300"
             >
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -54,14 +52,14 @@ const Header = () => {
       {isOpen && (
         <nav className="md:hidden bg-background border-t border-border animate-fade-in">
           {navItems.map((item) => (
-            <a
+            <Link
               key={item.href}
-              href={item.href}
+              to={item.href}
               onClick={() => setIsOpen(false)}
               className="block px-6 py-4 text-sm uppercase tracking-widest text-muted-foreground hover:text-primary hover:bg-secondary transition-colors"
             >
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
       )}
