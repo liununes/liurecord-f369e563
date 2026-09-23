@@ -124,10 +124,11 @@ Deno.serve(async (req) => {
       if (!name || !password) return json({ error: "Nome e senha são obrigatórios." }, 400);
 
       const clients = await loadClients();
+      const normalizedName = name.toLowerCase().trim();
       const match = clients.find(
         (c: any) =>
           typeof c?.name === "string" &&
-          c.name.toLowerCase().trim().includes(name.toLowerCase()) &&
+          c.name.toLowerCase().trim() === normalizedName &&
           String(c?.password ?? "").trim() === password,
       );
       if (!match) return json({ error: "Nome ou senha incorretos." }, 401);

@@ -17,7 +17,6 @@ const AdminLogin = () => {
   };
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -30,18 +29,13 @@ const AdminLogin = () => {
     e.preventDefault();
     setLoading(true);
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({ email, password });
-        if (error) throw error;
-        toast.success("Conta criada! Verifique seu e-mail para confirmar.");
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        try { localStorage.setItem("admin_email", email); } catch { /* ignore */ }
-        navigate("/admin");
-      }
-    } catch (err: any) {
-      toast.error(err.message);
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      try { localStorage.setItem("admin_email", email); } catch { /* ignore */ }
+      navigate("/admin");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Erro inesperado. Verifique suas credenciais.";
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -75,15 +69,8 @@ const AdminLogin = () => {
             minLength={6}
           />
           <Button type="submit" className="w-full bg-gradient-gold" disabled={loading}>
-            {loading ? "Aguarde..." : isSignUp ? "Criar conta" : "Entrar"}
+            {loading ? "Aguarde..." : "Entrar"}
           </Button>
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="w-full text-sm text-muted-foreground hover:text-primary transition-colors font-body"
-          >
-            {isSignUp ? "Já tem conta? Faça login" : "Criar nova conta"}
-          </button>
         </form>
 
         <a href="/" className="block text-center mt-6 text-sm text-muted-foreground hover:text-primary font-body">
