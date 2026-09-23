@@ -247,7 +247,7 @@ const AdminOverviewTab = ({ clients, media, setActiveTab }: AdminOverviewTabProp
 
 const Admin = () => {
   const navigate = useNavigate();
-  const { data: isAdmin, isLoading } = useAdminCheck();
+  const { data: isAdmin, isLoading, isError, refetch: retryAdminCheck } = useAdminCheck();
   const { data: clients = [] } = useClients();
   const { data: media = [] } = useAllPortfolioMedia();
   
@@ -324,6 +324,21 @@ const Admin = () => {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground font-body">Carregando...</p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <Settings className="mx-auto text-muted-foreground mb-4" size={48} />
+          <h1 className="font-display text-3xl text-foreground mb-2">Conexão temporariamente indisponível</h1>
+          <p className="font-body text-muted-foreground mb-6">
+            Não foi possível confirmar seu acesso agora. Tente novamente em instantes.
+          </p>
+          <Button onClick={() => retryAdminCheck()}>Tentar novamente</Button>
+        </div>
       </div>
     );
   }

@@ -422,7 +422,7 @@ const AdminRadioTab = () => {
               <Button
                 size="sm"
                 disabled={actions.isPending || backendRunning}
-                onClick={() => handleAction(actions.startBackend.startAsync, "Backend iniciado")}
+                onClick={() => handleAction(actions.startBackend.mutateAsync, "Backend iniciado")}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
               >
                 <Play size={14} /> Iniciar
@@ -430,7 +430,7 @@ const AdminRadioTab = () => {
               <Button
                 size="sm"
                 disabled={actions.isPending || !backendRunning}
-                onClick={() => handleAction(actions.stopBackend.startAsync, "Backend parado")}
+                onClick={() => handleAction(actions.stopBackend.mutateAsync, "Backend parado")}
                 variant="destructive"
                 className="gap-1.5"
               >
@@ -440,7 +440,7 @@ const AdminRadioTab = () => {
                 size="sm"
                 disabled={actions.isPending || !backendRunning}
                 variant="outline"
-                onClick={() => handleAction(actions.restartBackend.startAsync, "Backend reiniciado")}
+                onClick={() => handleAction(actions.restartBackend.mutateAsync, "Backend reiniciado")}
                 className="gap-1.5"
               >
                 <RotateCcw size={14} /> Reiniciar
@@ -455,7 +455,7 @@ const AdminRadioTab = () => {
               <Button
                 size="sm"
                 disabled={actions.isPending || frontendRunning}
-                onClick={() => handleAction(actions.startFrontend.startAsync, "Frontend iniciado")}
+                onClick={() => handleAction(actions.startFrontend.mutateAsync, "Frontend iniciado")}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white gap-1.5"
               >
                 <Play size={14} /> Iniciar
@@ -463,7 +463,7 @@ const AdminRadioTab = () => {
               <Button
                 size="sm"
                 disabled={actions.isPending || !frontendRunning}
-                onClick={() => handleAction(actions.stopFrontend.startAsync, "Frontend parado")}
+                onClick={() => handleAction(actions.stopFrontend.mutateAsync, "Frontend parado")}
                 variant="destructive"
                 className="gap-1.5"
               >
@@ -473,7 +473,7 @@ const AdminRadioTab = () => {
                 size="sm"
                 disabled={actions.isPending || !frontendRunning}
                 variant="outline"
-                onClick={() => handleAction(actions.restartFrontend.startAsync, "Frontend reiniciado")}
+                onClick={() => handleAction(actions.restartFrontend.mutateAsync, "Frontend reiniciado")}
                 className="gap-1.5"
               >
                 <RotateCcw size={14} /> Reiniciar
@@ -487,7 +487,7 @@ const AdminRadioTab = () => {
               <Button
                 size="sm"
                 disabled={actions.isPending}
-                onClick={() => handleAction(actions.restartAll.startAsync, "Todos os serviços reiniciados")}
+                onClick={() => handleAction(actions.restartAll.mutateAsync, "Todos os serviços reiniciados")}
                 className="bg-primary text-primary-foreground gap-1.5"
               >
                 <RotateCcw size={14} /> Reiniciar Tudo
