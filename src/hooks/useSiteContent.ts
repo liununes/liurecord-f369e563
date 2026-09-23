@@ -158,7 +158,8 @@ export function useAdminCheck() {
   return useQuery({
     queryKey: ["admin_check"],
     queryFn: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
       if (!user) return false;
       const { data, error } = await supabase
         .from("user_roles")
@@ -168,12 +169,13 @@ export function useAdminCheck() {
         .maybeSingle();
       if (error) {
         console.error("[useAdminCheck] error:", error);
-        return false;
+        throw error;
       }
       return !!data;
     },
     staleTime: 0,
-    retry: 1,
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 5000),
   });
 }
 
