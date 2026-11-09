@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { X as XIcon, Download, ArrowLeft, Loader2, Send, CheckCircle2, Lock, Heart } from "lucide-react";
+import { X as XIcon, Download, ArrowLeft, Loader2, Send, CheckCircle2, Lock, Heart, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ClientGallery = () => {
@@ -19,6 +19,7 @@ const ClientGallery = () => {
   const [saving, setSaving] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
+  const [previewPhoto, setPreviewPhoto] = useState<any>(null);
 
   const tokenRef = useRef<string | null>(null);
   const previewRetryRef = useRef<Set<string>>(new Set());
@@ -54,6 +55,15 @@ const ClientGallery = () => {
       image.style.visibility = "hidden";
     }
   };
+
+  useEffect(() => {
+    if (!previewPhoto) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewPhoto(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewPhoto]);
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -397,7 +407,17 @@ const ClientGallery = () => {
               return (
                 <div key={photo.id} className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30">
                   <div className="aspect-square bg-muted relative overflow-hidden">
-                    <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { void retryPreview(photo.id, e.currentTarget); }} />
+                    <button
+                      type="button"
+                      onClick={() => setPreviewPhoto(photo)}
+                      className="absolute inset-0 block w-full h-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      aria-label={`Ampliar pré-visualização de ${photo.filename}`}
+                    >
+                      <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { void retryPreview(photo.id, e.currentTarget); }} />
+                      <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white flex items-center gap-1 opacity-90">
+                        <Eye size={12} /> Ampliar prévia
+                      </span>
+                    </button>
                     {photo.status === "liked" && (
                       <div className="absolute top-2 left-2 bg-rose-500 text-white rounded-full p-1 shadow"><Heart size={10} className="fill-white" /></div>
                     )}
@@ -464,6 +484,40 @@ const ClientGallery = () => {
           </div>
         )}
       </main>
+
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pré-visualização da foto"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div className="relative w-full max-w-6xl max-h-[94vh] flex flex-col items-center gap-3" onClick={(event) => event.stopPropagation()}>
+            <div className="w-full flex items-center justify-between gap-3 text-white">
+              <p className="text-sm truncate">{previewPhoto.filename}</p>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setPreviewPhoto(null)} className="shrink-0 text-white hover:bg-white/10 hover:text-white" aria-label="Fechar pré-visualização">
+                <XIcon size={22} />
+              </Button>
+            </div>
+            <div className="w-full flex-1 min-h-0 flex items-center justify-center">
+              <img
+                src={previewPhoto.thumbnail_url}
+                alt={previewPhoto.filename}
+                className="max-w-full max-h-[72vh] object-contain rounded-md shadow-2xl"
+                decoding="async"
+                onError={(event) => { void retryPreview(previewPhoto.id, event.currentTarget); }}
+              />
+            </div>
+            <div className="w-full max-w-4xl rounded-lg border border-amber-400/50 bg-amber-950/90 px-4 py-3 text-amber-50 shadow-lg">
+              <p className="font-bold text-sm tracking-wide flex items-center gap-2"><Eye size={16} /> PRÉ-VISUALIZAÇÃO — QUALIDADE REDUZIDA</p>
+              <p className="mt-1 text-xs sm:text-sm leading-relaxed text-amber-100">
+                Esta é uma versão otimizada e com marca d’água, destinada somente à visualização. A imagem exibida não está na resolução nem na qualidade máxima do arquivo final. Para receber a foto em alta qualidade, utilize o botão <strong>Baixar</strong> na galeria, quando estiver disponível.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
