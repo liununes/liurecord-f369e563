@@ -44,7 +44,12 @@ const ClientGallery = () => {
         image.style.visibility = "hidden";
         return;
       }
-      setClient(data.client);
+      setClient((current: any) => current ? {
+        ...current,
+        photos: current.photos.map((photo: any) =>
+          photo.id === photoId ? { ...photo, thumbnail_url: refreshedPhoto.thumbnail_url } : photo
+        ),
+      } : current);
     } catch {
       image.style.visibility = "hidden";
     }
