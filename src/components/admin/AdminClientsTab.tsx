@@ -217,11 +217,17 @@ const AdminClientsTab = () => {
 
         // Upload to PRIVATE client-photos bucket. Signed URLs are generated server-side.
         const origPath = `${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
-        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file);
+        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file, {
+          contentType: file.type || "application/octet-stream",
+          cacheControl: "3600",
+        });
         if (e1) throw e1;
 
         const thumbPath = `${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
-        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb);
+        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb, {
+          contentType: "image/jpeg",
+          cacheControl: "31536000",
+        });
         if (e2) throw e2;
 
         updatedPhotos.push({
