@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { X as XIcon, Download, ArrowLeft, ChevronLeft, ChevronRight, Loader2, Send, CheckCircle2, Lock, Heart } from "lucide-react";
+import { X as XIcon, Download, ArrowLeft, Loader2, Send, CheckCircle2, Lock, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const ClientGallery = () => {
@@ -17,7 +17,6 @@ const ClientGallery = () => {
   const [passwordInput, setPasswordInput] = useState("");
   const [authenticating, setAuthenticating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
 
@@ -364,8 +363,8 @@ const ClientGallery = () => {
               const downloadCount = typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0);
               return (
                 <div key={photo.id} className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30">
-                  <div className="aspect-square bg-muted relative overflow-hidden cursor-pointer" onClick={() => setLightboxIndex(index)}>
-                    <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
+                  <div className="aspect-square bg-muted relative overflow-hidden">
+                    <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
                     {photo.status === "liked" && (
                       <div className="absolute top-2 left-2 bg-rose-500 text-white rounded-full p-1 shadow"><Heart size={10} className="fill-white" /></div>
                     )}
@@ -433,69 +432,6 @@ const ClientGallery = () => {
         )}
       </main>
 
-      {lightboxIndex !== null && photos[lightboxIndex] && (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm flex flex-col justify-between" onClick={() => setLightboxIndex(null)}>
-          <div className="p-4 flex items-center justify-between text-white bg-gradient-to-b from-black/80 to-transparent">
-            <div>
-              <p className="font-body text-xs text-zinc-400">{photos[lightboxIndex].filename}</p>
-              <p className="font-body text-[10px] text-zinc-500">{lightboxIndex + 1} de {photos.length}</p>
-            </div>
-            <button onClick={() => setLightboxIndex(null)} className="p-1.5 bg-zinc-900 rounded-full hover:bg-zinc-800 text-zinc-300"><XIcon size={20} /></button>
-          </div>
-
-          <div className="flex-1 flex items-center justify-center px-4 relative">
-            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === 0 ? photos.length - 1 : lightboxIndex - 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute left-4"><ChevronLeft size={24} /></button>
-            <img src={photos[lightboxIndex].thumbnail_url} alt="Ampliada" className="max-w-[90%] max-h-[80vh] object-contain rounded shadow-2xl" onClick={(e) => e.stopPropagation()} />
-            <button onClick={(e) => { e.stopPropagation(); setLightboxIndex(lightboxIndex === photos.length - 1 ? 0 : lightboxIndex + 1); }} className="p-2.5 bg-zinc-900/60 rounded-full hover:bg-zinc-900 text-zinc-300 absolute right-4"><ChevronRight size={24} /></button>
-          </div>
-
-          <div className="p-6 flex flex-col items-center justify-end gap-3 pointer-events-none" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-center gap-4 pointer-events-auto bg-black/60 backdrop-blur-md p-3 rounded-full border border-white/10">
-              <Button 
-                onClick={() => toggleFavorite(photos[lightboxIndex].id)} 
-                disabled={saving}
-                variant="ghost"
-                className={`rounded-full h-10 w-10 p-0 flex items-center justify-center ${photos[lightboxIndex].status === "liked" ? "bg-rose-500/20 text-rose-500 hover:bg-rose-500/30 hover:text-rose-400" : "bg-white/10 text-white hover:bg-white/20"}`}
-              >
-                <Heart size={18} className={photos[lightboxIndex].status === "liked" ? "fill-rose-500" : ""} />
-              </Button>
-              
-              {photos[lightboxIndex].status === "liked" && (
-                (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= maxDownloadsPerPhoto && !photos[lightboxIndex].released ? (
-                  <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-900/50 border border-amber-700 text-amber-400 font-body text-xs">
-                    <Lock size={14} /> Limite de downloads atingido
-                  </span>
-                ) : (
-                  needsRequest(photos[lightboxIndex]) && !pendingRequests.includes(photos[lightboxIndex].id) ? (
-                    <Button onClick={() => toggleRequest(photos[lightboxIndex].id)} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-body text-xs px-5 py-2.5 rounded-full">
-                      <Lock size={14} /> Solicitar
-                    </Button>
-                  ) : pendingRequests.includes(photos[lightboxIndex].id) ? (
-                    <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-blue-900/50 border border-blue-700 text-blue-400 font-body text-xs">
-                      <Send size={14} /> Solicitada
-                    </span>
-                  ) : isLocked(photos[lightboxIndex]) && !canDownload(photos[lightboxIndex]) ? (
-                    <span className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-amber-900/50 border border-amber-700 text-amber-400 font-body text-xs">
-                      <Lock size={14} /> Aguardando liberação
-                    </span>
-                  ) : (
-                    <Button onClick={() => downloadPhoto(photos[lightboxIndex])} disabled={downloadingId === photos[lightboxIndex].id}
-                      className="bg-green-600 hover:bg-green-700 text-white font-body text-xs px-5 py-2.5 rounded-full">
-                      {downloadingId === photos[lightboxIndex].id ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}{" "}
-                      {downloadingId === photos[lightboxIndex].id ? "Baixando..." : "Baixar"}
-                    </Button>
-                  )
-                )
-              )}
-            </div>
-            {photos[lightboxIndex].status === "liked" && (typeof photos[lightboxIndex].download_count === 'number' ? photos[lightboxIndex].download_count : (photos[lightboxIndex].downloaded ? 1 : 0)) >= maxDownloadsPerPhoto && !photos[lightboxIndex].released && (
-              <div className="bg-black/80 text-amber-400 text-xs py-2 px-4 rounded-full border border-amber-500/30 pointer-events-auto">
-                Você atingiu o limite de downloads desta foto. Solicite um novo download ao fotógrafo.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
