@@ -175,13 +175,20 @@ const AdminClientsTab = () => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!ALLOWED.includes(file.type) || file.size > MAX_SIZE) {
-        toast.error(`"${file.name}" inválido.`);
+        toast.error(`"${file.name}" não é compatível. Envie JPG, PNG ou WebP de até 50 MB.`);
         continue;
       }
       allValid.push(file);
       if (existingNames.has(file.name.toLowerCase())) {
         duplicates.push(file.name);
       }
+    }
+
+    if (allValid.length === 0) {
+      setUploading(false);
+      setUploadProgress(0);
+      e.target.value = "";
+      return;
     }
 
     let filesToUpload = allValid;
@@ -612,7 +619,7 @@ const AdminClientsTab = () => {
           <p className="text-xs text-muted-foreground">JPG, PNG, WebP. Máx 50MB.</p>
           <label className="cursor-pointer bg-gradient-gold text-primary-foreground font-semibold text-sm px-4 py-2 rounded shadow hover:opacity-90">
             {uploading ? "Enviando..." : "Selecionar"}
-            <input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
           </label>
           {uploading && <div className="w-full max-w-xs"><Progress value={uploadProgress} className="h-1.5" /><p className="text-xs text-muted-foreground mt-1">{uploadProgress}%</p></div>}
         </div>
