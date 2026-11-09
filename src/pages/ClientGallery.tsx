@@ -21,6 +21,34 @@ const ClientGallery = () => {
   const [requestingIds, setRequestingIds] = useState<Set<string>>(new Set());
 
   const tokenRef = useRef<string | null>(null);
+  const previewRetryRef = useRef<Set<string>>(new Set());
+
+  const retryPreview = async (photoId: string, image: HTMLImageElement) => {
+    if (previewRetryRef.current.has(photoId)) {
+      image.style.visibility = "hidden";
+      return;
+    }
+    previewRetryRef.current.add(photoId);
+    const token = tokenRef.current;
+    if (!token) {
+      image.style.visibility = "hidden";
+      return;
+    }
+    try {
+      // Refresh signed preview URLs once when an image fails (e.g. expired URL).
+      const { data, error } = await supabase.functions.invoke("client-portal", {
+        body: { action: "session", token },
+      });
+      const refreshedPhoto = data?.client?.photos?.find((p: any) => p.id === photoId);
+      if (error || !data?.client || !refreshedPhoto?.thumbnail_url) {
+        image.style.visibility = "hidden";
+        return;
+      }
+      setClient(data.client);
+    } catch {
+      image.style.visibility = "hidden";
+    }
+  };
 
   const photos = client?.photos || [];
   const maxPhotos = client?.max_photos || 0;
@@ -364,7 +392,7 @@ const ClientGallery = () => {
               return (
                 <div key={photo.id} className="bg-card border border-border overflow-hidden rounded-lg flex flex-col transition-all duration-300 hover:border-primary/30">
                   <div className="aspect-square bg-muted relative overflow-hidden">
-                    <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                    <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { void retryPreview(photo.id, e.currentTarget); }} />
                     {photo.status === "liked" && (
                       <div className="absolute top-2 left-2 bg-rose-500 text-white rounded-full p-1 shadow"><Heart size={10} className="fill-white" /></div>
                     )}
