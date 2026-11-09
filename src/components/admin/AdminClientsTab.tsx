@@ -78,7 +78,7 @@ const AdminClientsTab = () => {
   }, [selectedClient?.photos, photoUrls]);
 
   const resolveThumb = (photo: any): string =>
-    photo.thumbnail_url || photoUrls[photo.id] || "";
+    photo.thumbnail_path ? photoUrls[photo.id] || "" : photo.thumbnail_url || "";
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -578,7 +578,7 @@ const AdminClientsTab = () => {
                 if (!photo) return null;
                 return (
                   <div key={photoId} className="flex items-center gap-3 bg-card/60 border border-amber-800/30 rounded-lg p-3">
-                    <img src={resolveThumb(photo)} alt={photo.filename} className="w-12 h-12 rounded object-cover" />
+                    <img src={resolveThumb(photo)} alt={photo.filename} className="w-12 h-12 rounded object-cover" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-foreground truncate">{photo.filename}</p>
                       <p className="text-[10px] text-muted-foreground">Solicitado pelo cliente</p>
@@ -632,7 +632,7 @@ const AdminClientsTab = () => {
             {selectedClient.photos.map((photo: any) => (
               <Card key={photo.id} className="bg-card border-border overflow-hidden flex flex-col">
                 <div className="relative aspect-square bg-muted overflow-hidden">
-                  <img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" />
+                  <img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
                   <div className="absolute top-2 left-2 flex gap-1.5">
                     {photo.status === "liked" && <Badge className="bg-rose-600 text-white border-none text-[10px]"><Heart size={10} className="fill-white" /> Escolhida</Badge>}
                     {photo.status === "disliked" && <Badge className="bg-red-600 text-white border-none text-[10px]"><XIcon size={10} /> Não</Badge>}
