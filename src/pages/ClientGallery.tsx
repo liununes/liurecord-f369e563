@@ -393,6 +393,18 @@ const ClientGallery = () => {
           </div>
         )}
 
+        {photos.length > 0 && (
+          <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-400/50 bg-amber-950/40 px-4 py-3 text-amber-100">
+            <Eye size={19} className="mt-0.5 shrink-0 text-amber-300" />
+            <div>
+              <p className="text-xs sm:text-sm font-bold tracking-wide">ATENÇÃO: AS IMAGENS ABAIXO SÃO PRÉ-VISUALIZAÇÕES</p>
+              <p className="mt-1 text-xs sm:text-sm leading-relaxed text-amber-100/90">
+                As fotos são exibidas em tamanho e qualidade reduzidos, com marca d’água, apenas para facilitar a escolha. O arquivo em alta qualidade é obtido pelo botão <strong>Baixar</strong>, quando liberado.
+              </p>
+            </div>
+          </div>
+        )}
+
         {photos.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground border border-border bg-card/10 rounded-lg">
             Nenhuma foto disponível.
