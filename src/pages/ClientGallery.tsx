@@ -332,7 +332,7 @@ const ClientGallery = () => {
             </Button>
             <div>
               <h1 className="font-display text-lg tracking-wider text-gradient-gold leading-none">LIU RECORD</h1>
-              <p className="text-[11px] font-body text-muted-foreground mt-1">{client.name}</p>
+              <p className="text-sm font-body text-zinc-300 mt-1">{client.name}</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -348,7 +348,7 @@ const ClientGallery = () => {
           <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="p-4 rounded-lg border bg-card/50 border-border text-sm font-body">
               <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2"><Download size={16} className="text-primary"/> Seus Downloads</h3>
-              <div className="space-y-1.5 text-muted-foreground">
+              <div className="space-y-2 text-zinc-300 text-sm">
                 <p className="flex justify-between"><span>Fotos liberadas:</span> <strong className="text-foreground">{maxPhotos}</strong></p>
                 <p className="flex justify-between"><span>Fotos já baixadas:</span> <strong className="text-foreground">{downloadedCount}</strong></p>
                 <p className="flex justify-between border-t border-border/50 pt-1.5 mt-1.5">
@@ -359,7 +359,7 @@ const ClientGallery = () => {
                 </p>
               </div>
             </div>
-            <div className="p-4 rounded-lg border bg-card/20 border-border/50 text-xs font-body text-muted-foreground space-y-2">
+            <div className="p-4 rounded-lg border bg-card/20 border-border/50 text-sm font-body text-zinc-300 space-y-3">
               <h3 className="font-semibold text-foreground mb-2 text-sm">Informações sobre seus downloads</h3>
               {downloadTips ? (
                 <div className="whitespace-pre-wrap leading-relaxed">{downloadTips}</div>
@@ -378,14 +378,14 @@ const ClientGallery = () => {
         )}
 
         {hasPendingRequest && (
-          <div className="mb-4 p-3 rounded-lg border bg-blue-950/30 border-blue-800/50 text-blue-400 text-xs font-body flex items-center gap-2">
+          <div className="mb-4 p-4 rounded-lg border bg-blue-950/40 border-blue-700/60 text-blue-200 text-sm font-body flex items-center gap-3">
             <Send size={14} />
             <span>Solicitação de <strong>{pendingRequests.length}</strong> foto{pendingRequests.length !== 1 ? "s" : ""} enviada. Aguarde autorização.</span>
           </div>
         )}
 
         {requestingIds.size > 0 && (
-          <div className="mb-4 p-3 rounded-lg border bg-primary/10 border-primary/30 text-primary text-xs font-body flex items-center justify-between">
+          <div className="mb-4 p-4 rounded-lg border bg-primary/10 border-primary/40 text-primary text-sm font-body flex items-center justify-between">
             <span>{requestingIds.size} foto{requestingIds.size !== 1 ? "s" : ""} selecionada{requestingIds.size !== 1 ? "s" : ""} para solicitação</span>
             <Button size="sm" onClick={sendRequest} disabled={saving} className="bg-gradient-gold text-primary-foreground text-[10px] h-7">
               <Send size={11} /> Enviar Solicitação
@@ -397,8 +397,8 @@ const ClientGallery = () => {
           <div className="mb-5 flex items-start gap-3 rounded-lg border border-amber-400/50 bg-amber-950/40 px-4 py-3 text-amber-100">
             <Eye size={19} className="mt-0.5 shrink-0 text-amber-300" />
             <div>
-              <p className="text-xs sm:text-sm font-bold tracking-wide">ATENÇÃO: AS IMAGENS ABAIXO SÃO PRÉ-VISUALIZAÇÕES</p>
-              <p className="mt-1 text-xs sm:text-sm leading-relaxed text-amber-100/90">
+              <p className="text-sm sm:text-base font-bold tracking-wide">ATENÇÃO: AS IMAGENS ABAIXO SÃO PRÉ-VISUALIZAÇÕES</p>
+              <p className="mt-2 text-sm sm:text-base leading-relaxed text-amber-50">
                 As fotos são exibidas em tamanho e qualidade reduzidos, com marca d’água, apenas para facilitar a escolha. O arquivo em alta qualidade é obtido pelo botão <strong>Baixar</strong>, quando liberado.
               </p>
             </div>
@@ -428,8 +428,8 @@ const ClientGallery = () => {
                       className="absolute inset-0 block w-full h-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       aria-label={`Ampliar pré-visualização de ${photo.filename}`}
                     >
-                      <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { void retryPreview(photo.id, e.currentTarget); }} />
-                      <span className="absolute bottom-2 right-2 rounded-md bg-black/70 px-2 py-1 text-[10px] text-white flex items-center gap-1 opacity-90">
+                      <img src={photo.thumbnail_url} alt={photo.filename} className="object-cover w-full h-full transition-transform duration-200 hover:scale-[1.03]" loading="lazy" decoding="async" onError={(e) => { void retryPreview(photo.id, e.currentTarget); }} />
+                      <span className="absolute bottom-2 right-2 rounded-md bg-black/85 px-3 py-2 text-xs font-semibold text-white flex items-center gap-1.5">
                         <Eye size={12} /> Ampliar prévia
                       </span>
                     </button>
@@ -451,7 +451,7 @@ const ClientGallery = () => {
                   </div>
                   <div className="px-2 py-1.5 flex flex-col gap-1.5 bg-card/80 border-t border-border/50">
                     <div className="flex items-center justify-between w-full">
-                      <div className="text-[9px] text-muted-foreground font-medium">
+                      <div className="text-xs text-zinc-300 font-medium">
                         {downloadCount >= maxDownloadsPerPhoto && !photo.released ? (
                           <span className="text-amber-500">Downloads: {maxDownloadsPerPhoto}/{maxDownloadsPerPhoto}</span>
                         ) : (
@@ -476,7 +476,7 @@ const ClientGallery = () => {
                               {isRequested ? <CheckCircle2 size={11} /> : <Lock size={11} />} {isRequested ? "Selecionada" : "Solicitar"}
                             </Button>
                           ) : isPending && !isDownloaded ? (
-                            <span className="text-[10px] text-blue-400 flex items-center gap-1"><Send size={10} /> Solicitada</span>
+                            <span className="text-xs text-blue-300 flex items-center gap-1.5"><Send size={10} /> Solicitada</span>
                           ) : (
                             <Button size="sm" onClick={() => downloadPhoto(photo)} disabled={downloadingId === photo.id}
                               className="bg-green-600 hover:bg-green-700 text-white text-[10px] h-7 px-2">
@@ -488,7 +488,7 @@ const ClientGallery = () => {
                       </div>
                     </div>
                     {downloadCount >= maxDownloadsPerPhoto && !photo.released && (
-                      <div className="text-[9px] text-amber-500 text-center bg-amber-500/10 rounded p-1">
+                      <div className="text-xs text-amber-300 text-center bg-amber-500/10 rounded-md p-2 leading-relaxed">
                         Você atingiu o limite de downloads desta foto. Solicite um novo download ao fotógrafo.
                       </div>
                     )}
@@ -526,7 +526,7 @@ const ClientGallery = () => {
             </div>
             <div className="w-full max-w-4xl rounded-lg border border-amber-400/50 bg-amber-950/90 px-4 py-3 text-amber-50 shadow-lg">
               <p className="font-bold text-sm tracking-wide flex items-center gap-2"><Eye size={16} /> PRÉ-VISUALIZAÇÃO — QUALIDADE REDUZIDA</p>
-              <p className="mt-1 text-xs sm:text-sm leading-relaxed text-amber-100">
+              <p className="mt-2 text-sm sm:text-base leading-relaxed text-amber-50">
                 Esta é uma versão otimizada e com marca d’água, destinada somente à visualização. A imagem exibida não está na resolução nem na qualidade máxima do arquivo final. Para receber a foto em alta qualidade, utilize o botão <strong>Baixar</strong> na galeria, quando estiver disponível.
               </p>
             </div>
