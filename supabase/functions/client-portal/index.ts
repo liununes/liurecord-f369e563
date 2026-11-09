@@ -65,7 +65,7 @@ async function getSessionClientId(token: string): Promise<string | null> {
   return data.client_id as string;
 }
 
-async function signPhoto(photo: any) {
+async function signPhoto(photo: any, includeOriginal = false) {
   const out: any = {
     id: photo.id,
     filename: photo.filename,
@@ -76,13 +76,17 @@ async function signPhoto(photo: any) {
     downloaded_at: photo.downloaded_at,
   };
   // New style: private bucket paths
-  if (photo.storage_path) {
-    const { data: s1 } = await admin.storage
-      .from(CLIENT_PHOTOS_BUCKET)
-      .createSignedUrl(photo.storage_path, SIGNED_URL_SECONDS);
-    out.original_url = s1?.signedUrl ?? null;
-  } else if (photo.original_url) {
-    out.original_url = photo.original_url; // legacy public URL
+  if (includeOriginal) {
+    if (photo.storage_path) {
+      const { data: s1 } = await admin.storage
+        .from(CLIENT_PHOTOS_BUCKET)
+        .createSignedUrl(photo.storage_path, SIGNED_URL_SECONDS, { download: photo.filename || true });
+      out.original_url = s1?.signedUrl ?? null;
+    } else if (photo.original_url) {
+      const legacyUrl = new URL(photo.original_url);
+      legacyUrl.searchParams.set("download", photo.filename || "foto");
+      out.original_url = legacyUrl.toString();
+    }
   }
   if (photo.thumbnail_path) {
     const { data: s2 } = await admin.storage
@@ -194,7 +198,7 @@ Deno.serve(async (req) => {
       const updatedClients = clients.map((c: any) => (c.id === client.id ? updatedClient : c));
       await saveClients(updatedClients);
 
-      const signed = await signPhoto(updatedPhotos.find((p: any) => p.id === photoId));
+      const signed = await signPhoto(updatedPhotos.find((p: any) => p.id === photoId), true);
       return json({ ok: true, photo: signed });
     }
 
