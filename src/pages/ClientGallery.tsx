@@ -51,6 +51,9 @@ const ClientGallery = () => {
           photo.id === photoId ? { ...photo, thumbnail_url: refreshedPhoto.thumbnail_url } : photo
         ),
       } : current);
+      setPreviewPhoto((current: any) => current?.id === photoId
+        ? { ...current, thumbnail_url: refreshedPhoto.thumbnail_url }
+        : current);
     } catch {
       image.style.visibility = "hidden";
     }
