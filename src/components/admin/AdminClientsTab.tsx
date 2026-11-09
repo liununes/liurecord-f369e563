@@ -37,6 +37,7 @@ const AdminClientsTab = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({});
+  const [previewPhoto, setPreviewPhoto] = useState<any>(null);
 
   useEffect(() => {
     if (view !== "edit" || uploading) return;
@@ -79,6 +80,15 @@ const AdminClientsTab = () => {
 
   const resolveThumb = (photo: any): string =>
     photo.thumbnail_path ? photoUrls[photo.id] || "" : photo.thumbnail_url || "";
+
+  useEffect(() => {
+    if (!previewPhoto) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewPhoto(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewPhoto]);
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,13 +185,20 @@ const AdminClientsTab = () => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!ALLOWED.includes(file.type) || file.size > MAX_SIZE) {
-        toast.error(`"${file.name}" inválido.`);
+        toast.error(`"${file.name}" não é compatível. Envie JPG, PNG ou WebP de até 50 MB.`);
         continue;
       }
       allValid.push(file);
       if (existingNames.has(file.name.toLowerCase())) {
         duplicates.push(file.name);
       }
+    }
+
+    if (allValid.length === 0) {
+      setUploading(false);
+      setUploadProgress(0);
+      e.target.value = "";
+      return;
     }
 
     let filesToUpload = allValid;
@@ -217,11 +234,17 @@ const AdminClientsTab = () => {
 
         // Upload to PRIVATE client-photos bucket. Signed URLs are generated server-side.
         const origPath = `${selectedClient.id}/originals/${ts}-${rand}-${safe}`;
-        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file);
+        const { error: e1 } = await supabase.storage.from("client-photos").upload(origPath, file, {
+          contentType: file.type || "application/octet-stream",
+          cacheControl: "3600",
+        });
         if (e1) throw e1;
 
         const thumbPath = `${selectedClient.id}/thumbnails/${ts}-${rand}-thumb.jpg`;
-        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb);
+        const { error: e2 } = await supabase.storage.from("client-photos").upload(thumbPath, thumb, {
+          contentType: "image/jpeg",
+          cacheControl: "31536000",
+        });
         if (e2) throw e2;
 
         updatedPhotos.push({
@@ -606,7 +629,7 @@ const AdminClientsTab = () => {
           <p className="text-xs text-muted-foreground">JPG, PNG, WebP. Máx 50MB.</p>
           <label className="cursor-pointer bg-gradient-gold text-primary-foreground font-semibold text-sm px-4 py-2 rounded shadow hover:opacity-90">
             {uploading ? "Enviando..." : "Selecionar"}
-            <input type="file" multiple accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
+            <input type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handlePhotoUpload} disabled={uploading} />
           </label>
           {uploading && <div className="w-full max-w-xs"><Progress value={uploadProgress} className="h-1.5" /><p className="text-xs text-muted-foreground mt-1">{uploadProgress}%</p></div>}
         </div>
@@ -632,7 +655,7 @@ const AdminClientsTab = () => {
             {selectedClient.photos.map((photo: any) => (
               <Card key={photo.id} className="bg-card border-border overflow-hidden flex flex-col">
                 <div className="relative aspect-square bg-muted overflow-hidden">
-                  <img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} />
+                  <button type="button" onClick={() => setPreviewPhoto(photo)} className="absolute inset-0 z-0 block h-full w-full cursor-zoom-in focus:outline-none focus-visible:ring-2 focus-visible:ring-primary" aria-label={"Ampliar pré-visualização de " + photo.filename}><img src={resolveThumb(photo)} alt={photo.filename} className="object-cover w-full h-full transition-transform duration-200 hover:scale-[1.03]" loading="lazy" decoding="async" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} /><span className="absolute bottom-2 right-2 rounded-md bg-black/80 px-2.5 py-1.5 text-xs font-semibold text-white flex items-center gap-1.5"><Eye size={14} /> Ampliar foto</span></button>
                   <div className="absolute top-2 left-2 flex gap-1.5">
                     {photo.status === "liked" && <Badge className="bg-rose-600 text-white border-none text-[10px]"><Heart size={10} className="fill-white" /> Escolhida</Badge>}
                     {photo.status === "disliked" && <Badge className="bg-red-600 text-white border-none text-[10px]"><XIcon size={10} /> Não</Badge>}
@@ -647,16 +670,16 @@ const AdminClientsTab = () => {
                   </div>
                 </div>
                 <CardContent className="p-3 space-y-2">
-                  <div className="text-[11px] text-muted-foreground truncate">{photo.filename}</div>
+                  <div className="text-sm text-foreground/90 truncate" title={photo.filename}>{photo.filename}</div>
                   {((typeof photo.download_count === 'number' && photo.download_count > 0) || photo.downloaded) && (
-                    <div className="text-[10px] text-green-500 flex items-center gap-1">
-                      <CheckCircle2 size={10} /> Downloads: {typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0)} / {selectedClient?.max_downloads_per_photo || 2}
+                    <div className="text-xs font-medium text-green-400 flex items-center gap-1.5">
+                      <CheckCircle2 size={13} /> Downloads: {typeof photo.download_count === 'number' ? photo.download_count : (photo.downloaded ? 1 : 0)} / {selectedClient?.max_downloads_per_photo || 2}
                     </div>
                   )}
                   <div className="flex items-center justify-between border-t border-border/50 pt-2">
                     <div className="flex items-center gap-1.5">
                       <Switch checked={photo.released} onCheckedChange={() => togglePhotoRelease(photo.id, photo.released)} className="h-4 w-7 data-[state=checked]:bg-green-500 scale-75 origin-left" />
-                      <span className="text-[10px] text-muted-foreground">Liberar</span>
+                      <span className="text-xs font-medium text-foreground/90">Liberar</span>
                     </div>
                     <div className="flex gap-1">
                       {((typeof photo.download_count === 'number' && photo.download_count > 0) || photo.downloaded) && (
@@ -673,6 +696,19 @@ const AdminClientsTab = () => {
           </div>
         )}
       </div>
+
+      {previewPhoto && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-3 backdrop-blur-sm sm:p-6" role="dialog" aria-modal="true" aria-label="Foto ampliada" onClick={() => setPreviewPhoto(null)}>
+          <div className="flex max-h-[94vh] w-full max-w-6xl flex-col gap-3" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 text-white">
+              <p className="truncate text-base font-semibold">{previewPhoto.filename}</p>
+              <Button type="button" variant="ghost" size="icon" onClick={() => setPreviewPhoto(null)} className="shrink-0 text-white hover:bg-white/10 hover:text-white" aria-label="Fechar foto ampliada"><XIcon size={24} /></Button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center"><img src={resolveThumb(previewPhoto)} alt={previewPhoto.filename} className="max-h-[78vh] max-w-full rounded-md object-contain shadow-2xl" decoding="async" /></div>
+            <p className="rounded-lg border border-amber-400/40 bg-amber-950/90 px-4 py-3 text-sm leading-relaxed text-amber-50">Pré-visualização otimizada e com marca d’água. O arquivo original em alta qualidade permanece separado.</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
